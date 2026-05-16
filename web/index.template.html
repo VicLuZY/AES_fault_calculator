@@ -364,7 +364,7 @@ const VOLTAGE_OPTIONS = [
   { key:"480", label:"480 V", volts:480 },
   { key:"600", label:"600 V", volts:600 },
   { key:"2400r3", label:"2400*sqrt(3) V (4.16 kV)", volts:2400 * SQRT3 },
-  { key:"7200r3", label:"7200*sqrt(3) V (12.47 kV)", volts:7200 * SQRT3 },
+  { key:"7200r3", label:"7200*sqrt(3) V (12.5 kV)", volts:7200 * SQRT3 },
   { key:"13800", label:"13800 V", volts:13800 },
   { key:"25000", label:"25000 V", volts:25000 }
 ];
@@ -534,6 +534,7 @@ function normalizeCase(value) {
     delete branch.route; delete branch.route_mode;
     normalizeBranchMetadata(branch);
   });
+  syncConductorVoltageGroups(next);
   next.base_mva = num(next.base_mva || 100);
   next.frequency_hz = num(next.frequency_hz || 60);
   next.prefault_voltage_pu = num(next.prefault_voltage_pu || 1);
@@ -576,7 +577,56 @@ function setBusVoltage(id, key) {
   const bus = network.buses.find(b => b.id === id);
   if (!bus) return;
   bus.kv_ll = voltageKv(key);
+  syncConnectedBusVoltage(id, bus.kv_ll, network);
   modelChanged(true);
+}
+function isVoltageChangingBranch(br) {
+  return (br.kind || "feeder") === "transformer";
+}
+function busVoltage(caseModel, id) {
+  return caseModel.buses.find(b => b.id === id)?.kv_ll || DEFAULT_SECONDARY_KV;
+}
+function setCaseBusVoltage(caseModel, id, kv) {
+  const bus = caseModel.buses.find(b => b.id === id);
+  if (bus) bus.kv_ll = normalizeVoltageKv(kv);
+}
+function syncConnectedBusVoltage(startId, kv, caseModel=network) {
+  if (!startId || !caseModel?.buses?.length) return;
+  const nextKv = normalizeVoltageKv(kv);
+  const queue = [startId];
+  const seen = new Set();
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    setCaseBusVoltage(caseModel, id, nextKv);
+    for (const br of caseModel.branches || []) {
+      if (isVoltageChangingBranch(br)) continue;
+      if (br.from === id && br.to && !seen.has(br.to)) queue.push(br.to);
+      if (br.to === id && br.from && !seen.has(br.from)) queue.push(br.from);
+    }
+  }
+}
+function syncConductorVoltageGroups(caseModel=network) {
+  const visited = new Set();
+  for (const bus of caseModel?.buses || []) {
+    if (visited.has(bus.id)) continue;
+    const members = [];
+    const queue = [bus.id];
+    while (queue.length) {
+      const id = queue.shift();
+      if (!id || visited.has(id)) continue;
+      visited.add(id);
+      members.push(id);
+      for (const br of caseModel.branches || []) {
+        if (isVoltageChangingBranch(br)) continue;
+        if (br.from === id && br.to && !visited.has(br.to)) queue.push(br.to);
+        if (br.to === id && br.from && !visited.has(br.from)) queue.push(br.from);
+      }
+    }
+    const anchorKv = busVoltage(caseModel, members[0]);
+    members.forEach(id => setCaseBusVoltage(caseModel, id, anchorKv));
+  }
 }
 function collectLegacyLayout(value) {
   const out = blankLayout();
@@ -851,6 +901,9 @@ function editSelected(path, value, type, quiet=false) {
   if (selected.type === "branch" && ["kind","primary_connection","secondary_connection"].includes(path)) {
     normalizeBranchMetadata(obj);
     if (obj.kind === "transformer") obj.vector_shift_deg = defaultVectorShift(obj);
+  }
+  if (selected.type === "branch" && ["kind","from","to"].includes(path) && !isVoltageChangingBranch(obj)) {
+    syncConnectedBusVoltage(obj.from, busVoltage(network, obj.from));
   }
   modelChanged(!quiet);
 }
@@ -1132,6 +1185,7 @@ function validateLocal() {
     if (!network.buses.find(b => b.id === br.from) || !network.buses.find(b => b.id === br.to)) out.push(`Branch ${br.name || br.id} references a missing bus.`);
     if (br.enabled !== false && !num(br.rating_a) && ["breaker","switch","tie","feeder","transformer"].includes(br.kind || "")) out.push(`Branch ${br.name || br.id} has no equipment rating for duty comparison.`);
     if (br.enabled !== false && !br.has_z0) out.push(`Branch ${br.name || br.id} has no zero-sequence path.`);
+    if (!isVoltageChangingBranch(br) && voltageKey(busVoltage(network, br.from)) !== voltageKey(busVoltage(network, br.to))) out.push(`Branch ${br.name || br.id} connects buses with different voltage ratings.`);
   }
   for (const s of network.sources) {
     const label = s.kind === "load" ? "Load" : "Source";
