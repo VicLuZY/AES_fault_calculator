@@ -64,9 +64,9 @@ pub struct Bus {
     #[serde(default)]
     pub name: String,
     pub kv_ll: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub x: f64,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub y: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -464,6 +464,8 @@ mod tests {
     fn json_import_export_round_trip_preserves_case_model() {
         let net = sample_network();
         let json = net.to_json_pretty().unwrap();
+        let case_value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(case_value["buses"].as_array().unwrap().iter().all(|b| b.get("x").is_none() && b.get("y").is_none()));
         let parsed = Network::from_json(&json).unwrap();
 
         assert_eq!(parsed.project.name, net.project.name);

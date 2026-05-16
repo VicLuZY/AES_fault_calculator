@@ -118,7 +118,8 @@
     .legend { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
     .legend span { border: 1px solid var(--line); background: rgba(255,255,255,.92); border-radius: 3px; padding: 5px 7px; }
     .canvas-note { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px; color: #435265; font-size: 11px; pointer-events: none; }
-    .canvas-tools { position: absolute; left: 12px; top: 46px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+    .canvas-tools { position: absolute; left: 12px; top: 46px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
+    .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
     .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
     .tool-check input { width: auto; }
     .model-summary { position: absolute; left: 12px; bottom: 36px; width: min(480px, calc(100% - 24px)); z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none; }
@@ -147,23 +148,22 @@
     .muted { color: var(--muted); }
     .raw-json { min-height: 280px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; }
     .hidden { display: none !important; }
-    .busbar { stroke: var(--copper); stroke-width: 8; stroke-linecap: round; }
-    .bus-card { fill: #ffffff; stroke: #1769aa; stroke-width: 1.6; rx: 4; filter: drop-shadow(0 7px 10px rgba(24,36,52,.18)); cursor: move; }
-    .bus-card.selected { stroke: var(--gold); stroke-width: 2.4; }
+    .busbar { stroke: #263241; stroke-width: 7; stroke-linecap: square; cursor: move; }
+    .bus-tick { stroke: #263241; stroke-width: 2; pointer-events: none; }
+    .bus-hit { fill: transparent; stroke: transparent; cursor: move; }
+    .bus-selection { fill: transparent; stroke: var(--blue); stroke-width: 1.6; stroke-dasharray: 7 5; pointer-events: none; }
     .svg-label { fill: #17212b; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
     .svg-small { fill: #596879; font-size: 10px; pointer-events: none; user-select: none; }
-    .branch-line { stroke: #1769aa; stroke-width: 3.5; fill: none; }
-    .branch-line.feeder { stroke: #0b8497; }
-    .branch-line.transformer { stroke: #6d5cae; }
-    .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #a66f00; }
+    .branch-line { stroke: #344254; stroke-width: 2.4; fill: none; }
+    .branch-line.feeder, .branch-line.transformer, .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #344254; }
     .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
     .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
-    .branch-selected { stroke: var(--gold); stroke-width: 6; }
-    .equip-symbol { fill: #ffffff; stroke: #2c3948; stroke-width: 2; cursor: pointer; }
+    .branch-selected { stroke: var(--blue); stroke-width: 4.5; }
+    .equip-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
     .equip-label { fill: #17212b; font-size: 9px; font-weight: 800; pointer-events: none; }
-    .source-symbol { fill: #ffffff; stroke: #177245; stroke-width: 2; cursor: pointer; }
-    .source-selected { stroke: var(--gold); stroke-width: 3; }
-    .fault-chip { fill: rgba(246,193,80,.22); stroke: rgba(155,106,9,.7); stroke-width: 1; rx: 7; }
+    .source-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
+    .source-selected { stroke: var(--blue); stroke-width: 3; }
+    .fault-chip { fill: #fff7dd; stroke: rgba(155,106,9,.7); stroke-width: 1; rx: 2; }
     .fault-chip-text { fill: #4e3500; font-size: 10px; font-weight: 800; pointer-events: none; }
     .danger-text { fill: #b4232f; }
     .mini-table { font-size: 11px; }
@@ -284,6 +284,11 @@
       <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable one-line diagram"></svg></div>
       <div class="canvas-title"><span class="tag">one-line study model</span><span id="canvasSubtitle">snap-to-grid editable sequence network</span></div>
       <div class="canvas-tools">
+        <button id="btnCanvasAddBus" class="small ghost">Add bus</button>
+        <button id="btnCanvasAddFeeder" class="small ghost">Add feeder</button>
+        <button id="btnCanvasAddUtility" class="small ghost">Add source</button>
+        <button id="btnDeleteSelected" class="small danger">Delete</button>
+        <span class="tool-sep" aria-hidden="true"></span>
         <button id="btnZoomOut" class="small ghost">-</button>
         <button id="btnZoomIn" class="small ghost">+</button>
         <button id="btnZoomFit" class="small ghost">Fit</button>
@@ -332,6 +337,8 @@ const fmtKA = (v) => v ? Number(v).toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : "0.
 const escapeHtml = (s) => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 let network = null;
 let report = null;
+let layout = null;
+let pendingLegacyLayout = null;
 let wasmReady = false;
 let dirty = false;
 let lastRunAt = null;
@@ -342,23 +349,27 @@ let pan = null;
 let snapGrid = true;
 const GRID = 28;
 let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
+const CASE_STORAGE_KEY = "faultcalc-workstation-case";
+const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout";
 
 async function boot() {
   wireEvents();
   await bootWasm();
   if (wasmReady && typeof faultcalcSample === "function") {
-    const saved = localStorage.getItem("faultcalc-workstation-case");
+    const saved = localStorage.getItem(CASE_STORAGE_KEY);
     try {
       network = saved ? JSON.parse(saved) : JSON.parse(faultcalcSample());
     } catch (err) {
       console.warn("Stored case could not be loaded; restoring the built-in sample.", err);
-      localStorage.removeItem("faultcalc-workstation-case");
+      localStorage.removeItem(CASE_STORAGE_KEY);
       network = JSON.parse(faultcalcSample());
     }
   } else {
     network = fallbackSample();
   }
   network = normalizeCase(network);
+  loadLayoutForCase();
+  localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(electricalCase()));
   selected = { type: "bus", id: network.buses[0]?.id || null };
   syncProjectInputs(); syncStudyInputs(); refreshJson(); render();
   updateCommandState();
@@ -426,7 +437,7 @@ function wireEvents() {
   $("btnRun").onclick = runStudy;
   $("btnImport").onclick = () => $("fileInput").click();
   $("fileInput").onchange = importCase;
-  $("btnExportCase").onclick = () => download("faultcalc-case.json", JSON.stringify(network, null, 2), "application/json");
+  $("btnExportCase").onclick = () => download("faultcalc-case.json", JSON.stringify(electricalCase(), null, 2), "application/json");
   $("btnExportReport").onclick = () => report && download("faultcalc-report.json", JSON.stringify(report, null, 2), "application/json");
   $("btnExportCsv").onclick = () => report && download("faultcalc-report.csv", reportToCsv(report), "text/csv");
   $("btnExportHtml").onclick = () => report && download("faultcalc-report.html", reportToHtml(), "text/html");
@@ -440,7 +451,11 @@ function wireEvents() {
   $("btnAddSwitch").onclick = addSwitch;
   $("btnAddBreaker").onclick = addBreaker;
   $("btnAddMainTieMain").onclick = addMainTieMain;
-  $("btnAutoLayout").onclick = () => { autoLayout(); modelChanged(true); };
+  $("btnAutoLayout").onclick = () => { autoLayout(); layoutChanged(true); };
+  $("btnCanvasAddBus").onclick = addBus;
+  $("btnCanvasAddFeeder").onclick = addFeederToNewBus;
+  $("btnCanvasAddUtility").onclick = addUtility;
+  $("btnDeleteSelected").onclick = deleteSelected;
   $("btnZoomIn").onclick = () => zoomAt(0.82);
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
@@ -460,6 +475,11 @@ function wireEvents() {
   $("faultR").oninput = () => { network.options.fault_r_ohm = num($("faultR").value); modelChanged(false); };
   $("faultX").oninput = () => { network.options.fault_x_ohm = num($("faultX").value); modelChanged(false); };
   $("dutyCycles").oninput = () => { network.options.duty_cycles = num($("dutyCycles").value); modelChanged(false); };
+  document.addEventListener("keydown", evt => {
+    if (!["Delete","Backspace"].includes(evt.key)) return;
+    if (["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName)) return;
+    deleteSelected();
+  });
 }
 
 function syncProjectInputs() {
@@ -481,23 +501,157 @@ function syncStudyInputs() {
 }
 function normalizeCase(value) {
   const next = value && typeof value === "object" ? value : {};
+  pendingLegacyLayout = collectLegacyLayout(next);
   next.project = next.project && typeof next.project === "object" ? next.project : {};
   next.options = next.options && typeof next.options === "object" ? next.options : {};
   next.buses = Array.isArray(next.buses) ? next.buses : [];
   next.branches = Array.isArray(next.branches) ? next.branches : [];
   next.sources = Array.isArray(next.sources) ? next.sources : [];
+  next.buses.forEach(bus => { delete bus.x; delete bus.y; });
+  next.branches.forEach(branch => { delete branch.route; delete branch.route_mode; });
   next.base_mva = num(next.base_mva || 100);
   next.frequency_hz = num(next.frequency_hz || 60);
   next.prefault_voltage_pu = num(next.prefault_voltage_pu || 1);
   return next;
 }
+function collectLegacyLayout(value) {
+  const out = blankLayout();
+  let used = false;
+  if (Array.isArray(value?.buses)) {
+    for (const bus of value.buses) {
+      const x = Number(bus.x), y = Number(bus.y);
+      if (bus.id && Number.isFinite(x) && Number.isFinite(y) && (x || y)) {
+        out.buses[bus.id] = { x, y };
+        used = true;
+      }
+    }
+  }
+  if (Array.isArray(value?.branches)) {
+    for (const branch of value.branches) {
+      if (!branch.id) continue;
+      if (Array.isArray(branch.route) && branch.route.length) {
+        out.routes[branch.id] = branch.route.map(p => ({ x: num(p.x), y: num(p.y) })).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+        used = true;
+      }
+      if (branch.route_mode) {
+        out.routeModes[branch.id] = branch.route_mode;
+        used = true;
+      }
+    }
+  }
+  return used ? out : null;
+}
+function blankLayout() { return { buses: {}, routes: {}, routeModes: {} }; }
+function loadLayoutForCase() {
+  const key = layoutStorageKey();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch { saved = null; }
+  layout = saved && typeof saved === "object" ? saved : blankLayout();
+  if (!saved && pendingLegacyLayout) mergeLayout(pendingLegacyLayout);
+  pendingLegacyLayout = null;
+  ensureLayout();
+  saveLayout();
+}
+function mergeLayout(source) {
+  layout = layout || blankLayout();
+  Object.assign(layout.buses, source.buses || {});
+  Object.assign(layout.routes, source.routes || {});
+  Object.assign(layout.routeModes, source.routeModes || {});
+}
+function layoutStorageKey() { return `${LAYOUT_STORAGE_PREFIX}:${hashString(topologySignature())}`; }
+function topologySignature() {
+  if (!network) return "empty";
+  const buses = network.buses.map(b => b.id).join(",");
+  const branches = network.branches.map(b => `${b.id}:${b.from}>${b.to}`).join(",");
+  const sources = network.sources.map(s => `${s.id}:${s.bus}`).join(",");
+  return `${network.project?.number || network.project?.name || "case"}|${buses}|${branches}|${sources}`;
+}
+function hashString(value) {
+  let hash = 2166136261;
+  for (let i=0; i<value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function saveLayout() {
+  if (!network || !layout) return;
+  localStorage.setItem(layoutStorageKey(), JSON.stringify(layout));
+}
+function ensureLayout() {
+  layout = layout || blankLayout();
+  layout.buses = layout.buses || {};
+  layout.routes = layout.routes || {};
+  layout.routeModes = layout.routeModes || {};
+  const busIds = new Set(network.buses.map(b => b.id));
+  const branchIds = new Set(network.branches.map(b => b.id));
+  for (const id of Object.keys(layout.buses)) if (!busIds.has(id)) delete layout.buses[id];
+  for (const id of Object.keys(layout.routes)) if (!branchIds.has(id)) delete layout.routes[id];
+  for (const id of Object.keys(layout.routeModes)) if (!branchIds.has(id)) delete layout.routeModes[id];
+  const auto = autoLayoutPositions();
+  for (const bus of network.buses) {
+    const p = layout.buses[bus.id];
+    if (!p || !Number.isFinite(Number(p.x)) || !Number.isFinite(Number(p.y))) layout.buses[bus.id] = auto[bus.id] || nextBusPosition();
+  }
+}
+function autoLayoutPositions() {
+  const positions = {};
+  if (!network.buses.length) return positions;
+  const ids = network.buses.map(b => b.id);
+  const adjacency = Object.fromEntries(ids.map(id => [id, []]));
+  for (const br of network.branches) {
+    if (adjacency[br.from] && adjacency[br.to]) {
+      adjacency[br.from].push(br.to);
+      adjacency[br.to].push(br.from);
+    }
+  }
+  const seed = [...new Set(network.sources.map(s => s.bus).filter(id => adjacency[id]))];
+  const queue = seed.length ? seed : [ids[0]];
+  const layer = {};
+  queue.forEach(id => { layer[id] = 0; });
+  for (let i=0; i<queue.length; i++) {
+    const id = queue[i];
+    for (const next of adjacency[id] || []) {
+      if (layer[next] === undefined) {
+        layer[next] = layer[id] + 1;
+        queue.push(next);
+      }
+    }
+  }
+  ids.forEach((id, i) => { if (layer[id] === undefined) layer[id] = Math.max(0, ...Object.values(layer), 0) + 1 + i; });
+  const groups = {};
+  ids.forEach(id => { groups[layer[id]] = groups[layer[id]] || []; groups[layer[id]].push(id); });
+  Object.keys(groups).map(Number).sort((a,b) => a-b).forEach(col => {
+    const group = groups[col];
+    group.forEach((id, row) => {
+      positions[id] = { x: 160 + col * 250, y: 260 + (row - (group.length - 1) / 2) * 145 };
+    });
+  });
+  return positions;
+}
+function nextBusPosition(fromId) {
+  if (fromId && layout?.buses?.[fromId]) {
+    const p = layout.buses[fromId];
+    return { x: snap(Number(p.x) + 250), y: snap(Number(p.y)) };
+  }
+  const n = network?.buses?.length || 0;
+  return { x: 160 + n * 220, y: n % 2 ? 400 : 260 };
+}
+function electricalCase() {
+  const copy = JSON.parse(JSON.stringify(network || {}));
+  (copy.buses || []).forEach(bus => { delete bus.x; delete bus.y; });
+  (copy.branches || []).forEach(branch => { delete branch.route; delete branch.route_mode; });
+  return copy;
+}
 function modelChanged(rerender=true) {
   report = null;
   dirty = true;
   lastRunAt = null;
-  localStorage.setItem("faultcalc-workstation-case", JSON.stringify(network));
+  ensureLayout();
+  localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(electricalCase()));
+  saveLayout();
   $("saveState").textContent = "case modified - run required";
-  refreshJson(false);
+  refreshJson(document.activeElement !== $("rawJson"));
   if (rerender) render();
   else {
     renderModelSummary();
@@ -508,6 +662,12 @@ function modelChanged(rerender=true) {
     updateCommandState();
   }
 }
+function layoutChanged(rerender=true) {
+  ensureLayout();
+  saveLayout();
+  $("saveState").textContent = "diagram layout saved locally";
+  if (rerender) renderCanvas();
+}
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
 function runStudy() {
@@ -515,7 +675,7 @@ function runStudy() {
   $("calcState").textContent = "Solving sequence networks...";
   $("btnRun").disabled = true;
   try {
-    const raw = faultcalcCalculate(JSON.stringify(network));
+    const raw = faultcalcCalculate(JSON.stringify(electricalCase()));
     const response = JSON.parse(raw);
     if (!response.ok) throw new Error(response.error || "calculation failed");
     report = response.report;
@@ -565,14 +725,18 @@ function renderInspector() {
 }
 function field(label, path, value, type="text", unit="") { return `<div class="field"><label>${label}<span class="unit">${unit}</span></label><input type="${type}" value="${escapeHtml(value ?? "")}" onchange="editSelected('${path}', this.value, '${type}')" oninput="editSelected('${path}', this.value, '${type}', true)"></div>`; }
 function selectField(label, path, value, options) { return `<div class="field"><label>${label}</label><select onchange="editSelected('${path}', this.value, 'text')">${options.map(o => `<option value="${o}" ${o===value?"selected":""}>${o}</option>`).join("")}</select></div>`; }
+function routeModeField(br) {
+  const value = layout?.routeModes?.[br.id] || "orthogonal";
+  return `<div class="field"><label>Route</label><select onchange="editRouteMode('${br.id}', this.value)">${["orthogonal","direct","manual"].map(o => `<option value="${o}" ${o===value?"selected":""}>${o}</option>`).join("")}</select></div>`;
+}
 function busSelect(label, path, value) { return `<div class="field"><label>${label}</label><select onchange="editSelected('${path}', this.value, 'text')">${network.buses.map(b => `<option value="${b.id}" ${b.id===value?"selected":""}>${escapeHtml(b.name || b.id)}</option>`).join("")}</select></div>`; }
 function checkboxField(label, path, checked) { return `<label class="tag"><input type="checkbox" ${checked ? "checked" : ""} onchange="editSelected('${path}', this.checked, 'bool')" style="width:auto"> ${label}</label>`; }
-function busEditor(b) { return field("Name", "name", b.name) + `<div class="grid-3">${field("kV LL", "kv_ll", b.kv_ll, "number", "kV")}${field("X", "x", b.x, "number")}${field("Y", "y", b.y, "number")}</div>` + field("Notes", "notes", b.notes || ""); }
+function busEditor(b) { return field("Name", "name", b.name) + field("kV LL", "kv_ll", b.kv_ll, "number", "kV") + field("Notes", "notes", b.notes || ""); }
 function branchEditor(br) {
   return selectField("Kind", "kind", br.kind || "feeder", ["feeder","transformer","impedance","reactor","switch","breaker","tie"])
     + field("Name", "name", br.name)
     + `<div class="grid-2">${busSelect("From", "from", br.from)}${busSelect("To", "to", br.to)}</div>`
-    + `<div class="grid-2">${selectField("State", "state", br.state || (br.enabled === false ? "normally_open" : "normally_closed"), ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}${selectField("Route", "route_mode", br.route_mode || "orthogonal", ["orthogonal","direct","manual"])}</div>`
+    + `<div class="grid-2">${selectField("State", "state", br.state || (br.enabled === false ? "normally_open" : "normally_closed"), ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}${routeModeField(br)}</div>`
     + `<div class="grid-2">${selectField("Primary", "primary_connection", br.primary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}${selectField("Secondary", "secondary_connection", br.secondary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</div>`
     + `<div class="route-tools"><div>${routeField(br)}</div><button class="small ghost" onclick="setOrthogonalRoute()">Auto route</button></div>`
     + `<div class="grid-2">${field("Z1 R", "z1_pu.r", br.z1_pu?.r, "number", "pu")}${field("Z1 X", "z1_pu.x", br.z1_pu?.x, "number", "pu")}</div>`
@@ -593,10 +757,11 @@ function sourceEditor(s) {
     + `<div class="grid-2">${field("Z0 R", "z0_pu.r", s.z0_pu?.r, "number", "pu")}${field("Z0 X", "z0_pu.x", s.z0_pu?.x, "number", "pu")}</div>`
     + field("Rating", "rating", s.rating || "") + field("Notes", "notes", s.notes || "");
 }
-function routeField(br) { return `<div class="field"><label>Route points <span class="unit">x,y; x,y</span></label><input value="${escapeHtml(routeText(br))}" onchange="editRoute(this.value)"></div>`; }
-function routeText(br) { return Array.isArray(br.route) ? br.route.map(p => `${fmt(p.x,0)},${fmt(p.y,0)}`).join("; ") : ""; }
-function editRoute(value) { const br = selectedObj(); if (!br || selected.type !== "branch") return; br.route = value.split(";").map(part => part.trim()).filter(Boolean).map(part => { const [x,y] = part.split(",").map(num); return {x, y}; }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)); br.route_mode = br.route.length ? "manual" : "orthogonal"; modelChanged(true); }
-function setOrthogonalRoute() { const br = selectedObj(); if (!br || selected.type !== "branch") return; br.route = []; br.route_mode = "orthogonal"; modelChanged(true); }
+function routeField(br) { return `<div class="field"><label>Route points <span class="unit">x,y; x,y</span></label><input value="${escapeHtml(routeText(br.id))}" onchange="editRoute(this.value)"></div>`; }
+function routeText(id) { return Array.isArray(layout?.routes?.[id]) ? layout.routes[id].map(p => `${fmt(p.x,0)},${fmt(p.y,0)}`).join("; ") : ""; }
+function editRouteMode(id, value) { layout.routeModes[id] = value; if (value !== "manual") delete layout.routes[id]; layoutChanged(true); renderInspector(); }
+function editRoute(value) { const br = selectedObj(); if (!br || selected.type !== "branch") return; layout.routes[br.id] = value.split(";").map(part => part.trim()).filter(Boolean).map(part => { const [x,y] = part.split(",").map(num); return {x, y}; }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)); layout.routeModes[br.id] = layout.routes[br.id].length ? "manual" : "orthogonal"; layoutChanged(true); renderInspector(); }
+function setOrthogonalRoute() { const br = selectedObj(); if (!br || selected.type !== "branch") return; delete layout.routes[br.id]; layout.routeModes[br.id] = "orthogonal"; layoutChanged(true); renderInspector(); }
 function editSelected(path, value, type, quiet=false) {
   const obj = selectedObj(); if (!obj) return;
   setPath(obj, path, type === "number" ? num(value) : type === "bool" ? !!value : value);
@@ -609,7 +774,8 @@ function syncEnabledFromState(obj) { const state = String(obj.state || ""); obj.
 
 function renderCanvas() {
   const svg = $("oneLine");
-  const defs = `<defs><filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  ensureLayout();
+  const defs = "";
   const branchSvg = network.branches.map(renderBranch).join("");
   const sourceSvg = network.sources.map(renderSource).join("");
   const busSvg = network.buses.map(renderBus).join("");
@@ -617,7 +783,12 @@ function renderCanvas() {
   svg.innerHTML = defs + branchSvg + sourceSvg + busSvg;
   svg.onpointerdown = startCanvasPan; svg.onpointermove = onCanvasMove; svg.onpointerup = endDrag; svg.onpointerleave = endDrag; svg.onwheel = onCanvasWheel;
 }
-function busPos(id) { const b = network.buses.find(x => x.id === id); return b ? {x: Number(b.x)||0, y: Number(b.y)||0, b} : {x:0,y:0,b:null}; }
+function busPos(id) {
+  ensureLayout();
+  const b = network.buses.find(x => x.id === id);
+  const p = layout.buses[id] || { x: 0, y: 0 };
+  return b ? {x: Number(p.x)||0, y: Number(p.y)||0, b} : {x:0,y:0,b:null};
+}
 function renderBranch(br) {
   const points = branchPoints(br); const mid = polylineMidpoint(points);
   const sel = selected.type === "branch" && selected.id === br.id;
@@ -629,8 +800,9 @@ function renderBranch(br) {
 }
 function branchPoints(br) {
   const a = busPos(br.from), b = busPos(br.to);
-  if (br.route_mode === "direct") return [{x:a.x,y:a.y}, {x:b.x,y:b.y}];
-  if (Array.isArray(br.route) && br.route.length) return [{x:a.x,y:a.y}, ...br.route.map(p => ({x:num(p.x), y:num(p.y)})), {x:b.x,y:b.y}];
+  const mode = layout?.routeModes?.[br.id] || "orthogonal";
+  if (mode === "direct") return [{x:a.x,y:a.y}, {x:b.x,y:b.y}];
+  if (Array.isArray(layout?.routes?.[br.id]) && layout.routes[br.id].length) return [{x:a.x,y:a.y}, ...layout.routes[br.id].map(p => ({x:num(p.x), y:num(p.y)})), {x:b.x,y:b.y}];
   const mx = snap((a.x + b.x) / 2);
   return [{x:a.x,y:a.y}, {x:mx,y:a.y}, {x:mx,y:b.y}, {x:b.x,y:b.y}];
 }
@@ -651,16 +823,16 @@ function branchSymbol(br, x, y) {
   const state = br.state || (br.enabled === false ? "normally_open" : "normally_closed");
   if (kind === "transformer") {
     const p = connectionGlyph(br.primary_connection || "grounded_wye"), s = connectionGlyph(br.secondary_connection || "grounded_wye");
-    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-15}" cy="${y}" r="13"/><circle class="equip-symbol" cx="${x+15}" cy="${y}" r="13"/><text class="equip-label" x="${x-15}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+15}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-14}" cy="${y}" r="12"/><circle class="equip-symbol" cx="${x+14}" cy="${y}" r="12"/><line x1="${x-2}" y1="${y-14}" x2="${x-2}" y2="${y+14}" stroke="#263241" stroke-width="1"/><text class="equip-label" x="${x-14}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+14}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
   }
   if (kind === "breaker" || kind === "tie") {
-    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-20}" y="${y-12}" width="40" height="24" rx="3"/><line x1="${x-13}" y1="${y}" x2="${x+13}" y2="${y}" stroke="#2c3948" stroke-width="2"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+25}" text-anchor="middle">${stateLabel(state)}</text></g>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-19}" y="${y-10}" width="38" height="20" rx="0"/><line x1="${x-12}" y1="${y}" x2="${x+12}" y2="${y}" stroke="#263241" stroke-width="1.8"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
   if (kind === "switch") {
-    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#2c3948" stroke-width="2"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#2c3948" stroke-width="2"/>`;
+    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#263241" stroke-width="1.8"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#263241" stroke-width="1.8"/>`;
     return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-19}" cy="${y}" r="3"/><circle class="equip-symbol" cx="${x+19}" cy="${y}" r="3"/>${blade}<text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
-  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-17}" y="${y-9}" width="34" height="18" rx="4"/><line x1="${x-10}" y1="${y+8}" x2="${x+10}" y2="${y-8}" stroke="#2c3948" stroke-width="2"/></g>`;
+  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-16}" y="${y-8}" width="32" height="16" rx="0"/><line x1="${x-9}" y1="${y+6}" x2="${x+9}" y2="${y-6}" stroke="#263241" stroke-width="1.8"/></g>`;
 }
 function connectionGlyph(v) { return v === "delta" ? "D" : v === "grounding" ? "G" : v === "wye" ? "Y" : "Yg"; }
 function stateLabel(v) {
@@ -673,22 +845,29 @@ function stateLabel(v) {
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
 function renderSource(s) {
   const p = busPos(s.bus); const sx = p.x, sy = p.y - 92; const sel = selected.type === "source" && selected.id === s.id;
-  const label = s.kind === "motor" ? "M" : s.kind === "generator" ? "G" : s.kind === "inverter" ? "INV" : "∞";
-  return `<g onclick="selectItem('source','${s.id}')"><line class="branch-line" x1="${p.x}" y1="${p.y-26}" x2="${sx}" y2="${sy+23}"/><circle class="source-symbol ${sel ? "source-selected" : ""}" cx="${sx}" cy="${sy}" r="24"/><text class="svg-label" x="${sx}" y="${sy+5}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-34}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text></g>`;
+  const label = s.kind === "motor" ? "MTR" : s.kind === "generator" ? "GEN" : s.kind === "inverter" ? "INV" : "UTIL";
+  const symbol = s.kind === "utility" || s.kind === "grid"
+    ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-25}" y="${sy-14}" width="50" height="28" rx="0"/>`
+    : `<circle class="source-symbol ${sel ? "source-selected" : ""}" cx="${sx}" cy="${sy}" r="19"/>`;
+  return `<g onclick="selectItem('source','${s.id}')"><line class="branch-line" x1="${p.x}" y1="${p.y-4}" x2="${sx}" y2="${sy+18}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-28}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text></g>`;
 }
 function renderBus(b) {
-  const sel = selected.type === "bus" && selected.id === b.id; const r = busReport(b.id); const chip = r ? `<rect class="fault-chip" x="${b.x-62}" y="${b.y+35}" width="124" height="20"/><text class="fault-chip-text" x="${b.x}" y="${b.y+49}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA · SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
-  return `<g data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-card ${sel ? "selected" : ""}" x="${b.x-72}" y="${b.y-30}" width="144" height="60"/><line class="busbar" x1="${b.x-52}" y1="${b.y-8}" x2="${b.x+52}" y2="${b.y-8}"/><text class="svg-label" x="${b.x}" y="${b.y+13}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><text class="svg-small" x="${b.x}" y="${b.y+27}" text-anchor="middle">${fmt(b.kv_ll, 3)} kV</text>${chip}</g>`;
+  const p = busPos(b.id);
+  const sel = selected.type === "bus" && selected.id === b.id;
+  const r = busReport(b.id);
+  const chip = r ? `<rect class="fault-chip" x="${p.x-62}" y="${p.y+30}" width="124" height="18"/><text class="fault-chip-text" x="${p.x}" y="${p.y+43}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
+  const selection = sel ? `<rect class="bus-selection" x="${p.x-82}" y="${p.y-34}" width="164" height="72"/>` : "";
+  return `<g data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${p.x-86}" y="${p.y-38}" width="172" height="82"/><line class="busbar" x1="${p.x-64}" y1="${p.y}" x2="${p.x+64}" y2="${p.y}"/><line class="bus-tick" x1="${p.x-64}" y1="${p.y-10}" x2="${p.x-64}" y2="${p.y+10}"/><line class="bus-tick" x1="${p.x+64}" y1="${p.y-10}" x2="${p.x+64}" y2="${p.y+10}"/><text class="svg-label" x="${p.x}" y="${p.y-16}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><text class="svg-small" x="${p.x}" y="${p.y+20}" text-anchor="middle">${fmt(b.kv_ll, 3)} kV</text>${chip}${selection}</g>`;
 }
 function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
 function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
-function startBusDrag(evt, id) { evt.stopPropagation(); selectItem('bus', id); const p = svgPoint(evt); const b = network.buses.find(x => x.id === id); drag = { id, dx: b.x - p.x, dy: b.y - p.y }; }
+function startBusDrag(evt, id) { evt.stopPropagation(); selectItem('bus', id); const p = svgPoint(evt); const bp = busPos(id); drag = { id, dx: bp.x - p.x, dy: bp.y - p.y }; }
 function startCanvasPan(evt) { if (evt.target !== $("oneLine")) return; pan = { x: evt.clientX, y: evt.clientY, view: {...canvasView} }; }
 function onCanvasMove(evt) {
-  if (drag) { const p = svgPoint(evt); const b = network.buses.find(x => x.id === drag.id); if (!b) return; b.x = snap(p.x + drag.dx); b.y = snap(p.y + drag.dy); modelChanged(true); return; }
+  if (drag) { const p = svgPoint(evt); if (!layout.buses[drag.id]) layout.buses[drag.id] = nextBusPosition(); layout.buses[drag.id].x = snap(p.x + drag.dx); layout.buses[drag.id].y = snap(p.y + drag.dy); layoutChanged(true); return; }
   if (pan) { const svg = $("oneLine"); canvasView.x = pan.view.x - (evt.clientX - pan.x) * canvasView.w / svg.clientWidth; canvasView.y = pan.view.y - (evt.clientY - pan.y) * canvasView.h / svg.clientHeight; renderCanvas(); }
 }
-function endDrag() { if (drag) { drag = null; refreshJson(false); } pan = null; }
+function endDrag() { if (drag) { drag = null; saveLayout(); } pan = null; }
 function svgPoint(evt) { const svg = $("oneLine"); const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
 function snap(v) { return snapGrid ? Math.round(v / GRID) * GRID : Math.round(v); }
 function onCanvasWheel(evt) { evt.preventDefault(); zoomAt(evt.deltaY < 0 ? 0.88 : 1.14, svgPoint(evt)); }
@@ -702,7 +881,8 @@ function zoomAt(factor, center) {
 }
 function fitCanvas() {
   if (!network.buses.length) { canvasView = { x:0, y:0, w:1100, h:620 }; return; }
-  const xs = network.buses.map(b => num(b.x)), ys = network.buses.map(b => num(b.y));
+  ensureLayout();
+  const xs = network.buses.map(b => num(layout.buses[b.id]?.x)), ys = network.buses.map(b => num(layout.buses[b.id]?.y));
   const minX = Math.min(...xs) - 180, maxX = Math.max(...xs) + 180, minY = Math.min(...ys) - 150, maxY = Math.max(...ys) + 180;
   canvasView = { x:minX, y:minY, w:Math.max(420, maxX-minX), h:Math.max(260, maxY-minY) };
 }
@@ -788,6 +968,8 @@ function renderAuditPanel() {
 function updateCommandState() {
   if (!network) return;
   $("btnRun").disabled = !wasmReady;
+  const deleteBtn = $("btnDeleteSelected");
+  if (deleteBtn) deleteBtn.disabled = !selected.id;
   ["btnExportReport","btnExportCsv","btnExportHtml","btnPrintReport"].forEach(id => { const btn = $(id); if (btn) btn.disabled = !report; });
   const state = $("calcState");
   if (state) state.textContent = studyStatusText();
@@ -819,29 +1001,57 @@ function validateLocal() {
   return out;
 }
 
-function addBus() { const id = nextId("bus", network.buses); network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: 0.48, x: 180 + network.buses.length*160, y: 470 }); selectItem("bus", id); modelChanged(true); }
+function addBus() {
+  const id = nextId("bus", network.buses);
+  const anchor = selected.type === "bus" ? selected.id : null;
+  network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: 0.48 });
+  ensureLayout();
+  layout.buses[id] = nextBusPosition(anchor);
+  selectItem("bus", id);
+  modelChanged(true);
+}
 function addUtility() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses[0].id; const id = nextId("src", network.sources); network.sources.push({ id, kind: "utility", name: "Utility equivalent", bus, z1_pu:{r:.000995,x:.00995}, z2_pu:{r:.000995,x:.00995}, z0_pu:{r:.000995,x:.00995}, has_z0:true, enabled:true, state:"in_service", rating:"500 MVA, X/R 10" }); selectItem("source", id); modelChanged(true); }
 function addMotor() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("mot", network.sources); network.sources.push({ id, kind:"motor", name:"Motor contribution", bus, z1_pu:{r:18,x:95}, z2_pu:{r:18,x:95}, z0_pu:{r:25,x:120}, has_z0:false, enabled:true, state:"in_service", rating:"aggregate" }); selectItem("source", id); modelChanged(true); }
 function addGenerator() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("gen", network.sources); network.sources.push({ id, kind:"generator", name:"Synchronous generator", bus, z1_pu:{r:.02,x:.18}, z2_pu:{r:.02,x:.18}, z0_pu:{r:.04,x:.12}, has_z0:true, enabled:true, state:"in_service", rating:"generator subtransient model" }); selectItem("source", id); modelChanged(true); }
-function addTransformer() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("tx", network.branches); network.branches.push({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", route_mode:"orthogonal", primary_connection:"delta", secondary_connection:"grounded_wye", z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:1800, length_m:0, notes:"Edit %Z conversion in JSON or use programmatic builder." }); selectItem("branch", id); modelChanged(true); }
-function addFeeder() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("fdr", network.branches); network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", route_mode:"orthogonal", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }); selectItem("branch", id); modelChanged(true); }
+function addTransformer() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("tx", network.branches); network.branches.push({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:1800, length_m:0, notes:"Edit %Z conversion in JSON or use programmatic builder." }); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
+function addFeeder() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("fdr", network.branches); network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
+function addFeederToNewBus() {
+  if (!network.buses.length) { addBus(); return; }
+  const from = selected.type === "bus" ? selected.id : network.buses.at(-1).id;
+  const fromBus = network.buses.find(b => b.id === from) || network.buses[0];
+  const to = nextId("bus", network.buses);
+  network.buses.push({ id: to, name: `Bus ${network.buses.length+1}`, kv_ll: fromBus.kv_ll || 0.48 });
+  ensureLayout();
+  const p = busPos(from);
+  layout.buses[to] = { x: snap(p.x + 250), y: snap(p.y + (network.buses.length % 2 ? 115 : -115)) };
+  const id = nextId("fdr", network.branches);
+  network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 });
+  layout.routeModes[id] = "orthogonal";
+  selectItem("branch", id);
+  modelChanged(true);
+}
 function addSwitch() { addSwitchingBranch("switch", "Disconnect switch", "normally_open", false); }
 function addBreaker() { addSwitchingBranch("breaker", "Circuit breaker", "normally_closed", true); }
 function addSwitchingBranch(kind, name, state, enabled) {
   ensureTwoBuses();
   const [from,to] = branchEndpoints();
   const id = nextId(kind === "breaker" ? "cb" : "sw", network.branches);
-  network.branches.push({ id, kind, name, from, to, state, route_mode:"orthogonal", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled, rating_a:1200, length_m:0 });
+  network.branches.push({ id, kind, name, from, to, state, z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled, rating_a:1200, length_m:0 });
+  layout.routeModes[id] = "orthogonal";
   selectItem("branch", id); modelChanged(true);
 }
 function addMainTieMain() {
   const base = nextId("mtm", network.buses);
-  const y = 390 + network.buses.length * 12;
   const a = `${base}_a`, b = `${base}_b`;
-  network.buses.push({ id:a, name:"Main A Switchboard", kv_ll:.48, x:260, y });
-  network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:.48, x:620, y });
+  network.buses.push({ id:a, name:"Main A Switchboard", kv_ll:.48 });
+  network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:.48 });
+  ensureLayout();
+  const y = 390 + network.buses.length * 12;
+  layout.buses[a] = { x:260, y };
+  layout.buses[b] = { x:620, y };
   const tie = nextId("tie", network.branches);
-  network.branches.push({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", route_mode:"orthogonal", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 });
+  network.branches.push({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 });
+  layout.routeModes[tie] = "orthogonal";
   network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility A", bus:a, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service A" });
   network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility B", bus:b, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service B" });
   selectItem("branch", tie); fitCanvas(); modelChanged(true);
@@ -849,12 +1059,36 @@ function addMainTieMain() {
 function ensureTwoBuses() { while (network.buses.length < 2) addBus(); }
 function branchEndpoints() { if (selected.type === "bus" && selected.id) { const other = network.buses.find(b => b.id !== selected.id) || network.buses[0]; return [selected.id, other.id]; } return [network.buses[0].id, network.buses[1].id]; }
 function nextId(prefix, arr) { let i = arr.length + 1; while (arr.find(x => x.id === `${prefix}_${i}`)) i++; return `${prefix}_${i}`; }
-function deleteSelected() { if (!selected.id) return; if (selected.type === "bus") { network.branches = network.branches.filter(b => b.from !== selected.id && b.to !== selected.id); network.sources = network.sources.filter(s => s.bus !== selected.id); network.buses = network.buses.filter(b => b.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else if (selected.type === "branch") { network.branches = network.branches.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else { network.sources = network.sources.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } modelChanged(true); }
-function autoLayout() { const n = network.buses.length; network.buses.forEach((b,i) => { b.x = 140 + i * Math.min(230, 860 / Math.max(1,n-1)); b.y = i % 2 ? 340 : 250; }); }
+function deleteSelected() {
+  if (!selected.id) return;
+  if (selected.type === "bus") {
+    network.branches = network.branches.filter(b => b.from !== selected.id && b.to !== selected.id);
+    network.sources = network.sources.filter(s => s.bus !== selected.id);
+    network.buses = network.buses.filter(b => b.id !== selected.id);
+    delete layout.buses[selected.id];
+    selected = { type: "bus", id: network.buses[0]?.id || null };
+  } else if (selected.type === "branch") {
+    network.branches = network.branches.filter(x => x.id !== selected.id);
+    delete layout.routes[selected.id];
+    delete layout.routeModes[selected.id];
+    selected = { type: "bus", id: network.buses[0]?.id || null };
+  } else {
+    network.sources = network.sources.filter(x => x.id !== selected.id);
+    selected = { type: "bus", id: network.buses[0]?.id || null };
+  }
+  ensureLayout();
+  modelChanged(true);
+}
+function autoLayout() {
+  layout.buses = autoLayoutPositions();
+  layout.routes = {};
+  layout.routeModes = Object.fromEntries(network.branches.map(br => [br.id, "orthogonal"]));
+  fitCanvas();
+}
 
-async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
-function refreshJson(overwrite=true) { if (overwrite) $("rawJson").value = JSON.stringify(network, null, 2); }
-function applyJson() { try { network = normalizeCase(JSON.parse($("rawJson").value)); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
+async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); loadLayoutForCase(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
+function refreshJson(overwrite=true) { if (overwrite) $("rawJson").value = JSON.stringify(electricalCase(), null, 2); }
+function applyJson() { try { network = normalizeCase(JSON.parse($("rawJson").value)); loadLayoutForCase(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
 function download(name, text, type) { const blob = new Blob([text], {type}); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 function reportToCsv(r) {
   const rows = [["bus_id","bus","kv_ll","fault","sym_ka","peak_asym_ka","asym_rms_ka","x_over_r","ground_return_ka","z_eq_r_pu","z_eq_x_pu","notes"]];
@@ -875,7 +1109,7 @@ function printReport() {
   w.document.open(); w.document.write(reportToHtml()); w.document.close(); w.focus(); setTimeout(() => w.print(), 250);
 }
 
-function fallbackSample() { return { project:{name:"Fallback sample", revision:"A"}, base_mva:100, frequency_hz:60, prefault_voltage_pu:1, options:{fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5}, buses:[{id:"util",name:"Utility",kv_ll:12.47,x:150,y:240},{id:"msb",name:"MSB",kv_ll:.48,x:430,y:240}], branches:[{id:"tx1",kind:"transformer",name:"Transformer",from:"util",to:"msb",z1_pu:{r:.00588,x:.04118},z2_pu:{r:.00588,x:.04118},z0_pu:{r:.00588,x:.04118},has_z0:true,enabled:true}], sources:[{id:"src1",kind:"utility",name:"Utility equivalent",bus:"util",z1_pu:{r:.000995,x:.00995},z2_pu:{r:.000995,x:.00995},z0_pu:{r:.000995,x:.00995},has_z0:true,enabled:true}] }; }
+function fallbackSample() { return { project:{name:"Fallback sample", revision:"A"}, base_mva:100, frequency_hz:60, prefault_voltage_pu:1, options:{fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5}, buses:[{id:"util",name:"Utility",kv_ll:12.47},{id:"msb",name:"MSB",kv_ll:.48}], branches:[{id:"tx1",kind:"transformer",name:"Transformer",from:"util",to:"msb",z1_pu:{r:.00588,x:.04118},z2_pu:{r:.00588,x:.04118},z0_pu:{r:.00588,x:.04118},has_z0:true,enabled:true}], sources:[{id:"src1",kind:"utility",name:"Utility equivalent",bus:"util",z1_pu:{r:.000995,x:.00995},z2_pu:{r:.000995,x:.00995},z0_pu:{r:.000995,x:.00995},has_z0:true,enabled:true}] }; }
 
 window.selectItem = selectItem; window.editSelected = editSelected; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag;
 boot();
