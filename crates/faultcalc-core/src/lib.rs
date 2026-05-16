@@ -4,10 +4,12 @@
 //! symmetrical component network solution, fault calculations, and report export.
 
 pub mod complex;
+pub mod domain;
 pub mod model;
 pub mod sample;
 pub mod solver;
 
+pub use domain::*;
 pub use model::*;
 pub use sample::*;
 pub use solver::*;
@@ -23,7 +25,9 @@ pub struct FaultCalcError {
 
 impl FaultCalcError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 

@@ -338,6 +338,7 @@ const escapeHtml = (s) => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;"
 let network = null;
 let report = null;
 let layout = null;
+let domainView = null;
 let pendingLegacyLayout = null;
 let wasmReady = false;
 let dirty = false;
@@ -356,17 +357,19 @@ let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
 const DEFAULT_SECONDARY_KV = 0.6;
 const SQRT3 = Math.sqrt(3);
 const DEFAULT_VOLTAGE_KEY = "600";
-const VOLTAGE_OPTIONS = [
-  { key:"120", label:"120 V", volts:120 },
-  { key:"120r3", label:"120*sqrt(3) V (208 V)", volts:120 * SQRT3 },
-  { key:"240", label:"240 V", volts:240 },
-  { key:"200r3", label:"200*sqrt(3) V (347 V)", volts:200 * SQRT3 },
-  { key:"480", label:"480 V", volts:480 },
-  { key:"600", label:"600 V", volts:600 },
-  { key:"2400r3", label:"2400*sqrt(3) V (4.16 kV)", volts:2400 * SQRT3 },
-  { key:"7200r3", label:"7200*sqrt(3) V (12.5 kV)", volts:7200 * SQRT3 },
-  { key:"13800", label:"13800 V", volts:13800 },
-  { key:"25000", label:"25000 V", volts:25000 }
+let VOLTAGE_OPTIONS = [
+  { key:"120", label:"120 V", display:"120 V", volts:120, kv_ll:.12 },
+  { key:"120r3", label:"120*sqrt(3) V (208 V)", display:"208 V", volts:120 * SQRT3, kv_ll:120 * SQRT3 / 1000 },
+  { key:"240", label:"240 V", display:"240 V", volts:240, kv_ll:.24 },
+  { key:"160r3", label:"160*sqrt(3) V (277 V)", display:"277 V", volts:160 * SQRT3, kv_ll:160 * SQRT3 / 1000 },
+  { key:"200r3", label:"200*sqrt(3) V (347 V)", display:"347 V", volts:200 * SQRT3, kv_ll:200 * SQRT3 / 1000 },
+  { key:"480", label:"480 V", display:"480 V", volts:480, kv_ll:.48 },
+  { key:"600", label:"600 V", display:"600 V", volts:600, kv_ll:.6 },
+  { key:"2400", label:"2400 V", display:"2.4 kV", volts:2400, kv_ll:2.4 },
+  { key:"2400r3", label:"2400*sqrt(3) V (4.16 kV)", display:"4.16 kV", volts:2400 * SQRT3, kv_ll:2400 * SQRT3 / 1000 },
+  { key:"7200r3", label:"7200*sqrt(3) V (12.5 kV)", display:"12.5 kV", volts:7200 * SQRT3, kv_ll:7200 * SQRT3 / 1000 },
+  { key:"8000r3", label:"8000*sqrt(3) V (13.8 kV)", display:"13.8 kV", volts:8000 * SQRT3, kv_ll:8000 * SQRT3 / 1000 },
+  { key:"14400r3", label:"14400*sqrt(3) V (25 kV)", display:"25 kV", volts:14400 * SQRT3, kv_ll:14400 * SQRT3 / 1000 }
 ];
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const CASE_VERSION_KEY = "faultcalc-workstation-case-version";
@@ -415,7 +418,7 @@ async function bootWasm() {
     }
     const result = await WebAssembly.instantiate(bytes, {});
     wasmExports = result.instance.exports;
-    if (!wasmExports.memory || !wasmExports.faultcalc_calculate || !wasmExports.faultcalc_alloc) {
+    if (!wasmExports.memory || !wasmExports.faultcalc_calculate || !wasmExports.faultcalc_model || !wasmExports.faultcalc_alloc) {
       throw new Error("Rust WASM exports are incomplete");
     }
     wasmReady = true;
@@ -452,6 +455,7 @@ function wasmReadOutput() {
   return textDecoder.decode(view);
 }
 function faultcalcCalculate(json) { return wasmStringCall("faultcalc_calculate", json); }
+function faultcalcModel(json) { return wasmStringCall("faultcalc_model", json); }
 function faultcalcSample() { return wasmNoArgCall("faultcalc_sample"); }
 function faultcalcVersion() { return wasmNoArgCall("faultcalc_version"); }
 
@@ -514,6 +518,54 @@ function syncStudyInputs() {
   $("faultX").value = network.options.fault_x_ohm ?? 0;
   $("dutyCycles").value = network.options.duty_cycles ?? .5;
 }
+function rustDomainForCase(value) {
+  if (!wasmReady || typeof faultcalcModel !== "function") return null;
+  const response = JSON.parse(faultcalcModel(JSON.stringify(value || {})));
+  if (!response.ok) throw new Error(response.error || "Rust model normalization failed");
+  return response.domain || null;
+}
+function applyDomainView(domain, updateNetwork=false) {
+  if (!domain) return false;
+  domainView = domain;
+  if (Array.isArray(domain.voltage_options) && domain.voltage_options.length) VOLTAGE_OPTIONS = domain.voltage_options;
+  if (updateNetwork && domain.network) network = domain.network;
+  return true;
+}
+function refreshDomainView(updateNetwork=false) {
+  if (!network) return false;
+  try {
+    return applyDomainView(rustDomainForCase(electricalCase()), updateNetwork);
+  } catch (err) {
+    console.warn("Rust domain model unavailable; retaining browser fallback.", err);
+    return false;
+  }
+}
+function branchDomain(id) { return domainView?.branches?.find(b => b.id === id) || null; }
+function busDomain(id) { return domainView?.buses?.find(b => b.id === id) || null; }
+function fallbackDomainView(caseModel=network) {
+  const busName = id => (caseModel?.buses || []).find(b => b.id === id)?.name || id;
+  const branches = (caseModel?.branches || []).map(br => ({
+    id:br.id,
+    name:br.name || br.id,
+    kind:br.kind || "branch",
+    connection:(br.kind || "") === "transformer" ? `${busName(br.from)} (${voltageLabel(busVoltage(caseModel, br.from))}) to ${busName(br.to)} (${voltageLabel(busVoltage(caseModel, br.to))})` : `${busName(br.from)} to ${busName(br.to)}`,
+    rating:(br.kind || "") === "transformer" ? `${fmt(num(br.rating_kva || br.kva),0)} kVA / ${fmt(num(br.impedance_percent || br.z_percent),2)}%Z` : (br.rating_a ? `${fmt(br.rating_a,0)} A` : ""),
+    transformer:null
+  }));
+  return {
+    network: caseModel,
+    voltage_options: VOLTAGE_OPTIONS,
+    buses: (caseModel?.buses || []).map(b => ({ id:b.id, name:b.name || b.id, voltage_key:voltageKey(b.kv_ll), voltage_label:voltageLabel(b.kv_ll) })),
+    branches,
+    schedule: [],
+    warnings: [],
+    summary: {
+      closed_branch_count: (caseModel?.branches || []).filter(br => !isOpen(br)).length,
+      enabled_source_count: (caseModel?.sources || []).filter(s => s.kind !== "load" && !isOpen(s)).length,
+      warning_count: 0
+    }
+  };
+}
 function normalizeCase(value) {
   const next = value && typeof value === "object" ? value : {};
   pendingLegacyLayout = collectLegacyLayout(next);
@@ -524,16 +576,22 @@ function normalizeCase(value) {
   next.sources = Array.isArray(next.sources) ? next.sources : [];
   next.buses.forEach(bus => {
     delete bus.x; delete bus.y;
-    bus.kv_ll = normalizeVoltageKv(bus.kv_ll || DEFAULT_SECONDARY_KV);
   });
   next.branches.forEach(branch => {
     delete branch.route; delete branch.route_mode;
-    normalizeBranchMetadata(branch);
   });
-  syncConductorVoltageGroups(next);
   next.base_mva = num(next.base_mva || 100);
   next.frequency_hz = num(next.frequency_hz || 60);
   next.prefault_voltage_pu = num(next.prefault_voltage_pu || 1);
+  const domain = rustDomainForCase(next);
+  if (domain) {
+    applyDomainView(domain, false);
+    return domain.network;
+  }
+  next.buses.forEach(bus => { bus.kv_ll = normalizeVoltageKv(bus.kv_ll || DEFAULT_SECONDARY_KV); });
+  next.branches.forEach(branch => normalizeBranchMetadata(branch));
+  syncConductorVoltageGroups(next);
+  domainView = fallbackDomainView(next);
   return next;
 }
 function normalizeBranchMetadata(br) {
@@ -553,7 +611,8 @@ function defaultVectorShift(br) {
 }
 function branchWithMetadata(br) { normalizeBranchMetadata(br); return br; }
 function voltageKv(key) {
-  return (VOLTAGE_OPTIONS.find(v => v.key === key) || VOLTAGE_OPTIONS.find(v => v.key === DEFAULT_VOLTAGE_KEY)).volts / 1000;
+  const option = VOLTAGE_OPTIONS.find(v => v.key === key) || VOLTAGE_OPTIONS.find(v => v.key === DEFAULT_VOLTAGE_KEY);
+  return option?.kv_ll ?? (option?.volts || 600) / 1000;
 }
 function voltageKey(kv) {
   const volts = num(kv) * 1000;
@@ -567,13 +626,13 @@ function normalizeVoltageKv(kv) {
 }
 function voltageLabel(kv) {
   const option = VOLTAGE_OPTIONS.find(v => v.key === voltageKey(kv));
-  return option ? option.label : `${fmt(num(kv) * 1000, 0)} V`;
+  return option ? (option.display || option.label) : `${fmt(num(kv) * 1000, 0)} V`;
 }
 function setBusVoltage(id, key) {
   const bus = network.buses.find(b => b.id === id);
   if (!bus) return;
   bus.kv_ll = voltageKv(key);
-  syncConnectedBusVoltage(id, bus.kv_ll, network);
+  if (!wasmReady) syncConnectedBusVoltage(id, bus.kv_ll, network);
   modelChanged(true);
 }
 function isVoltageChangingBranch(br) {
@@ -587,12 +646,16 @@ function setCaseBusVoltage(caseModel, id, kv) {
   if (bus) bus.kv_ll = normalizeVoltageKv(kv);
 }
 function transformerKva(br) {
+  const rust = branchDomain(br.id)?.transformer?.kva;
+  if (num(rust) > 0) return num(rust);
   const stored = num(br.rating_kva ?? br.kva);
   if (stored > 0) return stored;
   const secKv = busVoltage(network, br.to);
   return num(br.rating_a) && secKv ? num(br.rating_a) * Math.sqrt(3) * secKv : 0;
 }
 function transformerPercentZ(br) {
+  const rust = branchDomain(br.id)?.transformer?.impedance_percent;
+  if (num(rust) > 0) return num(rust);
   const stored = num(br.impedance_percent ?? br.z_percent);
   if (stored > 0) return stored;
   const kva = transformerKva(br);
@@ -601,6 +664,11 @@ function transformerPercentZ(br) {
   return kva > 0 && baseMva > 0 && z > 0 ? z * (kva / 1000) / baseMva * 100 : 0;
 }
 function transformerRatedCurrent(br, busId) {
+  const transformer = branchDomain(br.id)?.transformer;
+  if (transformer) {
+    if (busId === br.from) return num(transformer.primary_rated_a);
+    if (busId === br.to) return num(transformer.secondary_rated_a);
+  }
   const kva = transformerKva(br);
   const kv = busVoltage(network, busId);
   return kva > 0 && kv > 0 ? kva / (Math.sqrt(3) * kv) : 0;
@@ -901,6 +969,8 @@ function modelChanged(rerender=true) {
   dirty = true;
   lastRunAt = null;
   ensureLayout();
+  refreshDomainView(true);
+  ensureLayout();
   localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(electricalCase()));
   saveLayout();
   $("saveState").textContent = "case modified - run required";
@@ -946,7 +1016,7 @@ function runStudy() {
   }
 }
 
-function render() { renderNavigator(); renderInspector(); renderCanvas(); renderResults(); renderSchedule(); renderDutyComparison(); renderIssues(); renderModelSummary(); renderAuditPanel(); updateCommandState(); }
+function render() { refreshDomainView(false); renderNavigator(); renderInspector(); renderCanvas(); renderResults(); renderSchedule(); renderDutyComparison(); renderIssues(); renderModelSummary(); renderAuditPanel(); updateCommandState(); }
 function renderNavigator() {
   const list = $("navigatorList");
   const items = currentTab === "buses" ? network.buses : currentTab === "branches" ? network.branches : network.sources;
@@ -1005,7 +1075,6 @@ function branchEditor(br) {
     + field("Notes", "notes", br.notes || "");
 }
 function transformerEditor(br) {
-  syncTransformerDerivedValues(br, false);
   return selectField("Kind", "kind", br.kind || "transformer", ["feeder","transformer"])
     + field("Name", "name", br.name)
     + `<div class="grid-2">${busSelect("Primary bus", "from", br.from)}${busSelect("Secondary bus", "to", br.to)}</div>`
@@ -1062,13 +1131,13 @@ function editSelected(path, value, type, quiet=false) {
     normalizeBranchMetadata(obj);
     if (obj.kind === "transformer") obj.vector_shift_deg = defaultVectorShift(obj);
   }
-  if (selected.type === "branch" && obj.kind === "transformer" && ["rating_kva","impedance_percent","xr_ratio"].includes(path)) {
+  if (!wasmReady && selected.type === "branch" && obj.kind === "transformer" && ["rating_kva","impedance_percent","xr_ratio"].includes(path)) {
     syncTransformerDerivedValues(obj, true);
   }
-  if (selected.type === "branch" && obj.kind === "transformer" && ["from","to"].includes(path)) {
+  if (!wasmReady && selected.type === "branch" && obj.kind === "transformer" && ["from","to"].includes(path)) {
     syncTransformerDerivedValues(obj, false);
   }
-  if (selected.type === "branch" && ["kind","from","to"].includes(path) && !isVoltageChangingBranch(obj)) {
+  if (!wasmReady && selected.type === "branch" && ["kind","from","to"].includes(path) && !isVoltageChangingBranch(obj)) {
     syncConnectedBusVoltage(obj.from, busVoltage(network, obj.from));
   }
   modelChanged(!quiet);
@@ -1299,17 +1368,28 @@ function renderResults() {
   $("resultsTable").querySelector("tbody").innerHTML = rows.join("");
 }
 function renderSchedule() {
+  const rustRows = domainView?.schedule || [];
+  const rows = rustRows.length
+    ? rustRows.map(row => `<tr><td>${escapeHtml(row.item_type)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.connection)}</td><td>${escapeHtml(row.rating)}</td></tr>`)
+    : fallbackScheduleRows();
+  $("scheduleTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No equipment defined.</td></tr>`;
+}
+function fallbackScheduleRows() {
   const rows = [];
   for (const b of network.buses) rows.push(`<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`);
   for (const br of network.branches) rows.push(`<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`);
   for (const s of network.sources) rows.push(`<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`);
-  $("scheduleTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No equipment defined.</td></tr>`;
+  return rows;
 }
 function branchConnectionText(br) {
+  const rust = branchDomain(br.id)?.connection;
+  if (rust) return rust;
   if ((br.kind || "") !== "transformer") return `${busLabel(br.from)} to ${busLabel(br.to)}`;
   return `${busLabel(br.from)} (${voltageLabel(busVoltage(network, br.from))}) to ${busLabel(br.to)} (${voltageLabel(busVoltage(network, br.to))})`;
 }
 function branchRatingText(br) {
+  const rust = branchDomain(br.id)?.rating;
+  if (rust) return rust;
   if ((br.kind || "") !== "transformer") return br.rating_a ? `${fmt(br.rating_a,0)} A` : "";
   return `${fmt(transformerKva(br),0)} kVA / ${fmt(transformerPercentZ(br),2)}%Z / Pri ${fmtA(transformerRatedCurrent(br, br.from))} A / Sec ${fmtA(transformerRatedCurrent(br, br.to))} A`;
 }
@@ -1334,7 +1414,7 @@ function renderIssues(extra, bad=false) {
   if (report?.warnings?.length) messages.push(...report.warnings);
   const local = validateLocal(); if (local.length) messages.push(...local);
   if (!messages.length) {
-    const headline = report ? "No model validation warnings from the current run." : "No local model validation warnings. Run the study to calculate fault duties.";
+    const headline = report ? "No Rust model validation warnings from the current run." : "No Rust model validation warnings. Run the study to calculate fault duties.";
     log.innerHTML = `<div class="ok">${headline}</div><div class="muted" style="font-size:12px;line-height:1.45">This tool uses transparent symmetrical-component calculations. It does not embed proprietary IEEE or ANSI multiplying-factor tables.</div>`;
     return;
   }
@@ -1388,11 +1468,15 @@ function studyStatusText() {
   const suffix = lastRunAt ? ` at ${lastRunAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}` : "";
   return `Calculated${suffix}`;
 }
-function closedBranchCount() { return network.branches.filter(br => !isOpen(br)).length; }
-function enabledSourceCount() { return network.sources.filter(s => s.kind !== "load" && !isOpen(s)).length; }
+function closedBranchCount() { return domainView?.summary?.closed_branch_count ?? network.branches.filter(br => !isOpen(br)).length; }
+function enabledSourceCount() { return domainView?.summary?.enabled_source_count ?? network.sources.filter(s => s.kind !== "load" && !isOpen(s)).length; }
 function resultRowCount() { return report ? report.buses.reduce((n, b) => n + b.faults.length, 0) : 0; }
-function modelWarningCount() { return validateLocal().length + (report?.warnings?.length || 0); }
+function modelWarningCount() { return (domainView?.warnings?.length ?? validateLocalFallback().length) + (report?.warnings?.length || 0); }
 function validateLocal() {
+  if (domainView?.warnings) return domainView.warnings;
+  return validateLocalFallback();
+}
+function validateLocalFallback() {
   const out = [];
   if (!network.sources.some(s => s.kind !== "load" && !isOpen(s))) out.push("No enabled source equivalent is defined.");
   for (const br of network.branches) {
@@ -1441,10 +1525,7 @@ function conductorBranch(id, from, to, name="Conductor") {
   return branchWithMetadata({ id, kind:"feeder", name, from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 });
 }
 function transformerBranch(id, from, to, ratingKva=2500, impedancePercent=5.75) {
-  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
-  const branch = branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
-  syncTransformerDerivedValues(branch, false);
-  return branch;
+  return branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{r:0,x:0}, z2_pu:{r:0,x:0}, z0_pu:{r:0,x:0}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
 }
 function addConductorFromBus(from, terminal="bottom") {
   from = from || selectedBusId();

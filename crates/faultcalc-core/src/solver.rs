@@ -93,15 +93,33 @@ pub fn calculate_all_buses(net: &Network) -> Result<Report> {
     };
 
     for (bus_index, bus) in net.buses.iter().enumerate() {
-        let z1 = driving_point_impedance(&seq1, bus_index)
-            .map_err(|e| FaultCalcError::new(format!("positive sequence solve failed at {}: {}", bus.display_name(), e)))?;
-        let z2 = driving_point_impedance(&seq2, bus_index)
-            .map_err(|e| FaultCalcError::new(format!("negative sequence solve failed at {}: {}", bus.display_name(), e)))?;
-        let z0 = driving_point_impedance(&seq0, bus_index)
-            .map_err(|e| FaultCalcError::new(format!("zero sequence solve failed at {}: {}", bus.display_name(), e)))?;
+        let z1 = driving_point_impedance(&seq1, bus_index).map_err(|e| {
+            FaultCalcError::new(format!(
+                "positive sequence solve failed at {}: {}",
+                bus.display_name(),
+                e
+            ))
+        })?;
+        let z2 = driving_point_impedance(&seq2, bus_index).map_err(|e| {
+            FaultCalcError::new(format!(
+                "negative sequence solve failed at {}: {}",
+                bus.display_name(),
+                e
+            ))
+        })?;
+        let z0 = driving_point_impedance(&seq0, bus_index).map_err(|e| {
+            FaultCalcError::new(format!(
+                "zero sequence solve failed at {}: {}",
+                bus.display_name(),
+                e
+            ))
+        })?;
 
         if z1.is_none() {
-            report.warnings.push(format!("bus {} has no positive-sequence source path", bus.display_name()));
+            report.warnings.push(format!(
+                "bus {} has no positive-sequence source path",
+                bus.display_name()
+            ));
         }
         if z0.is_none() {
             report.warnings.push(format!("bus {} has no zero-sequence return path; SLG/DLG ground current is zero in this model", bus.display_name()));
@@ -109,7 +127,10 @@ pub fn calculate_all_buses(net: &Network) -> Result<Report> {
 
         let ibase_ka = net.i_base_ka(bus_index);
         let zbase = net.z_base_ohm(bus_index);
-        let zf = Complex::new(net.options.fault_r_ohm / zbase, net.options.fault_x_ohm / zbase);
+        let zf = Complex::new(
+            net.options.fault_r_ohm / zbase,
+            net.options.fault_x_ohm / zbase,
+        );
         let faults = fault_results_for_bus(net, z1, z2, z0, zf, ibase_ka);
 
         let result = BusFaultResult {
@@ -198,13 +219,21 @@ fn csv_escape(v: &str) -> String {
 
 fn build_seq_network(net: &Network, seq: u8) -> SeqNetwork {
     let n = net.buses.len();
-    let mut out = SeqNetwork { branches: Vec::new(), shunts: vec![Complex::ZERO; n], adjacency: vec![Vec::new(); n] };
+    let mut out = SeqNetwork {
+        branches: Vec::new(),
+        shunts: vec![Complex::ZERO; n],
+        adjacency: vec![Vec::new(); n],
+    };
     for branch in &net.branches {
         if !branch.enabled {
             continue;
         }
-        let Some(from) = net.bus_index(&branch.from) else { continue; };
-        let Some(to) = net.bus_index(&branch.to) else { continue; };
+        let Some(from) = net.bus_index(&branch.from) else {
+            continue;
+        };
+        let Some(to) = net.bus_index(&branch.to) else {
+            continue;
+        };
         let (ok, z) = match seq {
             1 => (true, branch.z1_pu.to_complex()),
             2 => (true, branch.z2_pu.to_complex()),
@@ -222,7 +251,9 @@ fn build_seq_network(net: &Network, seq: u8) -> SeqNetwork {
         if !source.enabled {
             continue;
         }
-        let Some(bus) = net.bus_index(&source.bus) else { continue; };
+        let Some(bus) = net.bus_index(&source.bus) else {
+            continue;
+        };
         let (ok, z) = match seq {
             1 => (true, source.z1_pu.to_complex()),
             2 => (true, source.z2_pu.to_complex()),
@@ -277,14 +308,22 @@ fn connected_component(seq: &SeqNetwork, start: usize) -> Vec<usize> {
     while let Some(node) = q.pop_front() {
         for &branch_index in &seq.adjacency[node] {
             let branch = seq.branches[branch_index];
-            let next = if branch.to == node { branch.from } else { branch.to };
+            let next = if branch.to == node {
+                branch.from
+            } else {
+                branch.to
+            };
             if !seen[next] {
                 seen[next] = true;
                 q.push_back(next);
             }
         }
     }
-    let mut out: Vec<usize> = seen.iter().enumerate().filter_map(|(i, v)| if *v { Some(i) } else { None }).collect();
+    let mut out: Vec<usize> = seen
+        .iter()
+        .enumerate()
+        .filter_map(|(i, v)| if *v { Some(i) } else { None })
+        .collect();
     out.sort_unstable();
     out
 }
@@ -325,14 +364,30 @@ fn solve_linear(mut a: Vec<Vec<Complex>>, mut b: Vec<Complex>) -> Result<Vec<Com
     Ok(b)
 }
 
-fn fault_results_for_bus(net: &Network, z1: Option<Complex>, z2: Option<Complex>, z0: Option<Complex>, zf: Complex, ibase_ka: f64) -> Vec<FaultResult> {
+fn fault_results_for_bus(
+    net: &Network,
+    z1: Option<Complex>,
+    z2: Option<Complex>,
+    z0: Option<Complex>,
+    zf: Complex,
+    ibase_ka: f64,
+) -> Vec<FaultResult> {
     let v = Complex::new(net.prefault_voltage_pu, 0.0);
     let mut out = Vec::new();
 
     if let Some(z1) = z1 {
         let zeq = z1 + zf;
         let i = v / zeq;
-        out.push(make_fault_result("3PH", i.abs(), None, zeq, ibase_ka, net.frequency_hz, net.options.duty_cycles, Vec::new()));
+        out.push(make_fault_result(
+            "3PH",
+            i.abs(),
+            None,
+            zeq,
+            ibase_ka,
+            net.frequency_hz,
+            net.options.duty_cycles,
+            Vec::new(),
+        ));
     } else {
         out.push(zero_fault("3PH", "no positive-sequence source path"));
     }
@@ -342,18 +397,42 @@ fn fault_results_for_bus(net: &Network, z1: Option<Complex>, z2: Option<Complex>
         let i1 = v / zeq;
         let ia = i1.scale(3.0);
         let ground_ka = ia.abs() * ibase_ka;
-        out.push(make_fault_result("SLG", ia.abs(), Some(ground_ka), zeq, ibase_ka, net.frequency_hz, net.options.duty_cycles, Vec::new()));
+        out.push(make_fault_result(
+            "SLG",
+            ia.abs(),
+            Some(ground_ka),
+            zeq,
+            ibase_ka,
+            net.frequency_hz,
+            net.options.duty_cycles,
+            Vec::new(),
+        ));
     } else {
-        out.push(zero_fault("SLG", "missing positive, negative, or zero sequence return path"));
+        out.push(zero_fault(
+            "SLG",
+            "missing positive, negative, or zero sequence return path",
+        ));
     }
 
     if let (Some(z1), Some(z2)) = (z1, z2) {
         let zeq = z1 + z2 + zf;
         let i1 = v / zeq;
         let line_current_pu = 3.0_f64.sqrt() * i1.abs();
-        out.push(make_fault_result("LL", line_current_pu, None, zeq, ibase_ka, net.frequency_hz, net.options.duty_cycles, Vec::new()));
+        out.push(make_fault_result(
+            "LL",
+            line_current_pu,
+            None,
+            zeq,
+            ibase_ka,
+            net.frequency_hz,
+            net.options.duty_cycles,
+            Vec::new(),
+        ));
     } else {
-        out.push(zero_fault("LL", "missing positive or negative sequence source path"));
+        out.push(zero_fault(
+            "LL",
+            "missing positive or negative sequence source path",
+        ));
     }
 
     if let (Some(z1), Some(z2), Some(z0)) = (z1, z2, z0) {
@@ -371,12 +450,27 @@ fn fault_results_for_bus(net: &Network, z1: Option<Complex>, z2: Option<Complex>
             let ic = i0 + a * i1 + a2 * i2;
             let phase_current_pu = ib.abs().max(ic.abs());
             let ground_ka = i0.scale(3.0).abs() * ibase_ka;
-            out.push(make_fault_result("DLG", phase_current_pu, Some(ground_ka), zeq, ibase_ka, net.frequency_hz, net.options.duty_cycles, Vec::new()));
+            out.push(make_fault_result(
+                "DLG",
+                phase_current_pu,
+                Some(ground_ka),
+                zeq,
+                ibase_ka,
+                net.frequency_hz,
+                net.options.duty_cycles,
+                Vec::new(),
+            ));
         } else {
-            out.push(zero_fault("DLG", "zero denominator in double-line-ground sequence combination"));
+            out.push(zero_fault(
+                "DLG",
+                "zero denominator in double-line-ground sequence combination",
+            ));
         }
     } else {
-        out.push(zero_fault("DLG", "missing positive, negative, or zero sequence return path"));
+        out.push(zero_fault(
+            "DLG",
+            "missing positive, negative, or zero sequence return path",
+        ));
     }
 
     out
@@ -396,11 +490,28 @@ fn zero_fault(kind: &str, note: &str) -> FaultResult {
     }
 }
 
-fn make_fault_result(kind: &str, available_pu: f64, ground_return_ka: Option<f64>, zeq: Complex, ibase_ka: f64, frequency_hz: f64, duty_cycles: f64, notes: Vec<String>) -> FaultResult {
+fn make_fault_result(
+    kind: &str,
+    available_pu: f64,
+    ground_return_ka: Option<f64>,
+    zeq: Complex,
+    ibase_ka: f64,
+    frequency_hz: f64,
+    duty_cycles: f64,
+    notes: Vec<String>,
+) -> FaultResult {
     let available_sym_ka = available_pu * ibase_ka;
     let xr = x_over_r_abs(zeq).map(|v| v.min(1.0e9));
-    let peak_asym_ka = xr.map(|v| peak_asym_current_ka(available_sym_ka, v, frequency_hz, 0.5 / frequency_hz));
-    let asym_rms_ka = xr.map(|v| asym_rms_current_ka(available_sym_ka, v, frequency_hz, duty_cycles / frequency_hz));
+    let peak_asym_ka =
+        xr.map(|v| peak_asym_current_ka(available_sym_ka, v, frequency_hz, 0.5 / frequency_hz));
+    let asym_rms_ka = xr.map(|v| {
+        asym_rms_current_ka(
+            available_sym_ka,
+            v,
+            frequency_hz,
+            duty_cycles / frequency_hz,
+        )
+    });
     FaultResult {
         kind: kind.to_string(),
         available_sym_ka: clean_f64(available_sym_ka),
@@ -415,7 +526,11 @@ fn make_fault_result(kind: &str, available_pu: f64, ground_return_ka: Option<f64
 }
 
 fn clean_f64(v: f64) -> f64 {
-    if v.is_finite() { v } else { 0.0 }
+    if v.is_finite() {
+        v
+    } else {
+        0.0
+    }
 }
 
 fn peak_asym_current_ka(i_sym_ka: f64, xr: f64, frequency_hz: f64, t_seconds: f64) -> f64 {
@@ -477,6 +592,7 @@ mod tests {
             kind: "utility".to_string(),
             name: "Utility".to_string(),
             bus: "bus".to_string(),
+            state: "in_service".to_string(),
             z1_pu: z,
             z2_pu: z,
             z0_pu: z,
@@ -484,7 +600,8 @@ mod tests {
             enabled: true,
             rating: String::new(),
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
         net
     }
 
@@ -523,13 +640,16 @@ mod tests {
     #[test]
     fn sequence_driving_point_impedance_includes_source_and_branch() {
         let mut net = Network::new(100.0);
-        net.add_bus("src_bus", "Source bus", 10.0, 0.0, 0.0).unwrap();
-        net.add_bus("load_bus", "Load bus", 10.0, 100.0, 0.0).unwrap();
+        net.add_bus("src_bus", "Source bus", 10.0, 0.0, 0.0)
+            .unwrap();
+        net.add_bus("load_bus", "Load bus", 10.0, 100.0, 0.0)
+            .unwrap();
         net.add_source(Source {
             id: "src".to_string(),
             kind: "utility".to_string(),
             name: "Utility".to_string(),
             bus: "src_bus".to_string(),
+            state: "in_service".to_string(),
             z1_pu: Impedance::new(0.0, 0.1),
             z2_pu: Impedance::new(0.0, 0.1),
             z0_pu: Impedance::new(0.0, 0.1),
@@ -537,13 +657,15 @@ mod tests {
             enabled: true,
             rating: String::new(),
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
         net.add_branch(Branch {
             id: "f1".to_string(),
             kind: "feeder".to_string(),
             name: "Feeder".to_string(),
             from: "src_bus".to_string(),
             to: "load_bus".to_string(),
+            state: "normally_closed".to_string(),
             conductors: Default::default(),
             primary_connection: String::new(),
             secondary_connection: String::new(),
@@ -554,12 +676,18 @@ mod tests {
             has_z0: true,
             enabled: true,
             rating_a: 0.0,
+            rating_kva: 0.0,
+            impedance_percent: 0.0,
+            xr_ratio: 0.0,
             length_m: 0.0,
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let seq1 = build_seq_network(&net, 1);
-        let z = driving_point_impedance(&seq1, net.bus_index("load_bus").unwrap()).unwrap().unwrap();
+        let z = driving_point_impedance(&seq1, net.bus_index("load_bus").unwrap())
+            .unwrap()
+            .unwrap();
 
         assert_complex_close(z, Complex::new(0.0, 0.3), 1e-12);
     }
@@ -574,6 +702,7 @@ mod tests {
             kind: "utility".to_string(),
             name: "Utility".to_string(),
             bus: "source".to_string(),
+            state: "in_service".to_string(),
             z1_pu: Impedance::new(0.0, 0.1),
             z2_pu: Impedance::new(0.0, 0.1),
             z0_pu: Impedance::new(0.0, 0.1),
@@ -581,13 +710,15 @@ mod tests {
             enabled: true,
             rating: String::new(),
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
         net.add_branch(Branch {
             id: "branch".to_string(),
             kind: "feeder".to_string(),
             name: "Feeder".to_string(),
             from: "source".to_string(),
             to: "load".to_string(),
+            state: "normally_closed".to_string(),
             conductors: Default::default(),
             primary_connection: String::new(),
             secondary_connection: String::new(),
@@ -598,9 +729,13 @@ mod tests {
             has_z0: true,
             enabled: true,
             rating_a: 0.0,
+            rating_kva: 0.0,
+            impedance_percent: 0.0,
+            xr_ratio: 0.0,
             length_m: 0.0,
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let report = calculate_all_buses(&net).unwrap();
         let load = bus(&report, "load");
@@ -622,20 +757,34 @@ mod tests {
         assert_close(fault(bus, "3PH").available_pu, 5.0, 1e-12);
         assert_close(fault(bus, "3PH").available_sym_ka, 28.86751345948129, 1e-12);
         assert_close(fault(bus, "SLG").available_pu, 5.0, 1e-12);
-        assert_close(fault(bus, "SLG").ground_return_ka.unwrap(), 28.86751345948129, 1e-12);
+        assert_close(
+            fault(bus, "SLG").ground_return_ka.unwrap(),
+            28.86751345948129,
+            1e-12,
+        );
         assert_close(fault(bus, "LL").available_pu, 4.330127018922193, 1e-12);
         assert_close(fault(bus, "LL").available_sym_ka, 25.0, 1e-12);
         assert_close(fault(bus, "DLG").available_pu, 5.0, 1e-12);
-        assert_close(fault(bus, "DLG").ground_return_ka.unwrap(), 28.86751345948129, 1e-12);
+        assert_close(
+            fault(bus, "DLG").ground_return_ka.unwrap(),
+            28.86751345948129,
+            1e-12,
+        );
     }
 
     #[test]
     fn sample_case_fault_snapshot_covers_all_faults_at_all_buses() {
         let net = sample_network();
         let report = calculate_all_buses(&net).unwrap();
-        let expected = [
-            ("util_bus", [("3PH", 962202.3397350826), ("SLG", 962202.3397350826), ("LL", 833291.6697914065), ("DLG", 962202.3397350826)]),
-        ];
+        let expected = [(
+            "util_bus",
+            [
+                ("3PH", 962202.3397350826),
+                ("SLG", 962202.3397350826),
+                ("LL", 833291.6697914065),
+                ("DLG", 962202.3397350826),
+            ],
+        )];
 
         for (bus_id, faults) in expected {
             let bus = bus(&report, bus_id);
@@ -654,6 +803,7 @@ mod tests {
             kind: "utility".to_string(),
             name: "Disabled source".to_string(),
             bus: "bus".to_string(),
+            state: "out_of_service".to_string(),
             z1_pu: Impedance::new(0.0, 0.1),
             z2_pu: Impedance::new(0.0, 0.1),
             z0_pu: Impedance::new(0.0, 0.1),
@@ -661,7 +811,8 @@ mod tests {
             enabled: false,
             rating: String::new(),
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let report = calculate_all_buses(&net).unwrap();
         let three_phase = fault(bus(&report, "bus"), "3PH");
@@ -679,6 +830,7 @@ mod tests {
             kind: "utility".to_string(),
             name: "Utility".to_string(),
             bus: "source".to_string(),
+            state: "in_service".to_string(),
             z1_pu: Impedance::new(0.0, 0.1),
             z2_pu: Impedance::new(0.0, 0.1),
             z0_pu: Impedance::new(0.0, 0.1),
@@ -686,13 +838,15 @@ mod tests {
             enabled: true,
             rating: String::new(),
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
         net.add_branch(Branch {
             id: "open".to_string(),
             kind: "feeder".to_string(),
             name: "Open feeder".to_string(),
             from: "source".to_string(),
             to: "load".to_string(),
+            state: "normally_open".to_string(),
             conductors: Default::default(),
             primary_connection: String::new(),
             secondary_connection: String::new(),
@@ -703,16 +857,23 @@ mod tests {
             has_z0: true,
             enabled: false,
             rating_a: 0.0,
+            rating_kva: 0.0,
+            impedance_percent: 0.0,
+            xr_ratio: 0.0,
             length_m: 0.0,
             notes: String::new(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let report = calculate_all_buses(&net).unwrap();
         let load = bus(&report, "load");
 
         assert!(load.z1_pu.is_none());
         assert_close(fault(load, "3PH").available_sym_ka, 0.0, 1e-12);
-        assert!(report.warnings.iter().any(|w| w.contains("Load") && w.contains("positive-sequence")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("Load") && w.contains("positive-sequence")));
     }
 
     #[test]
@@ -721,11 +882,20 @@ mod tests {
         let report = calculate_all_buses(&net).unwrap();
         let bus = bus(&report, "bus");
 
-        assert!(report.warnings.iter().any(|w| w.contains("zero-sequence return path")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("zero-sequence return path")));
         assert_close(fault(bus, "SLG").available_sym_ka, 0.0, 1e-12);
         assert_close(fault(bus, "DLG").available_sym_ka, 0.0, 1e-12);
-        assert!(fault(bus, "SLG").notes.iter().any(|n| n.contains("zero sequence return path")));
-        assert!(fault(bus, "DLG").notes.iter().any(|n| n.contains("zero sequence return path")));
+        assert!(fault(bus, "SLG")
+            .notes
+            .iter()
+            .any(|n| n.contains("zero sequence return path")));
+        assert!(fault(bus, "DLG")
+            .notes
+            .iter()
+            .any(|n| n.contains("zero sequence return path")));
     }
 
     #[test]

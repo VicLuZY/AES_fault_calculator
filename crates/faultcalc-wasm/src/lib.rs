@@ -1,6 +1,9 @@
 #![allow(static_mut_refs)]
 
-use faultcalc_core::{calculate_all_buses, report_json_pretty, sample_json, Network, VERSION};
+use faultcalc_core::{
+    calculate_all_buses, case_domain_json, normalise_case, report_json_pretty, sample_json,
+    Network, VERSION,
+};
 use serde_json::json;
 
 static mut LAST_OUTPUT: Vec<u8> = Vec::new();
@@ -53,6 +56,27 @@ pub unsafe extern "C" fn faultcalc_calculate(input_ptr: *const u8, input_len: us
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn faultcalc_model(input_ptr: *const u8, input_len: usize) -> i32 {
+    let bytes = std::slice::from_raw_parts(input_ptr, input_len);
+    match std::str::from_utf8(bytes) {
+        Ok(text) => match model_response(text) {
+            Ok(output) => {
+                set_output(output);
+                1
+            }
+            Err(err) => {
+                set_output(error_response(err));
+                1
+            }
+        },
+        Err(err) => {
+            set_output(error_response(err.to_string()));
+            1
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn faultcalc_sample() -> i32 {
     match sample_json() {
         Ok(output) => {
@@ -74,14 +98,29 @@ pub unsafe extern "C" fn faultcalc_version() -> i32 {
 
 fn calculate_response(text: &str) -> Result<String, String> {
     let mut net = Network::from_json(text).map_err(|e| e.to_string())?;
-    net.normalise_defaults();
+    normalise_case(&mut net);
     let report = calculate_all_buses(&net).map_err(|e| e.to_string())?;
     let report_value = serde_json::to_value(&report).map_err(|e| e.to_string())?;
     Ok(json!({
         "ok": true,
         "version": VERSION,
         "report": report_value
-    }).to_string())
+    })
+    .to_string())
+}
+
+fn model_response(text: &str) -> Result<String, String> {
+    let domain = case_domain_json(text).map_err(|e| e.to_string())?;
+    let domain_value: serde_json::Value =
+        serde_json::from_str(&domain).map_err(|e| e.to_string())?;
+    let network_value = domain_value["network"].clone();
+    Ok(json!({
+        "ok": true,
+        "version": VERSION,
+        "domain": domain_value,
+        "network": network_value
+    })
+    .to_string())
 }
 
 fn error_response(message: String) -> String {
@@ -89,7 +128,8 @@ fn error_response(message: String) -> String {
         "ok": false,
         "version": VERSION,
         "error": message
-    }).to_string()
+    })
+    .to_string()
 }
 
 fn set_output(output: String) {
@@ -127,6 +167,16 @@ mod tests {
         serde_json::from_str(&output_string()).unwrap()
     }
 
+    unsafe fn model(input: &str) -> Value {
+        let bytes = input.as_bytes();
+        let ptr = faultcalc_alloc(bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+        let ok = faultcalc_model(ptr, bytes.len());
+        faultcalc_free(ptr, bytes.len());
+        assert_eq!(ok, 1);
+        serde_json::from_str(&output_string()).unwrap()
+    }
+
     #[test]
     fn direct_abi_exports_version_sample_and_calculate() {
         unsafe {
@@ -141,7 +191,18 @@ mod tests {
             let response = calculate(&sample);
             assert_eq!(response["ok"], true);
             assert_eq!(response["report"]["summary"]["bus_count"], 1);
-            assert_eq!(response["report"]["buses"][0]["faults"].as_array().unwrap().len(), 4);
+            assert_eq!(
+                response["report"]["buses"][0]["faults"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                4
+            );
+
+            let model_response = model(&sample);
+            assert_eq!(model_response["ok"], true);
+            assert_eq!(model_response["domain"]["voltage_options"][0]["key"], "120");
+            assert_eq!(model_response["network"]["buses"][0]["kv_ll"], 0.6);
         }
     }
 }

@@ -2,10 +2,18 @@ use crate::complex::Complex;
 use crate::{FaultCalcError, Result};
 use serde::{Deserialize, Serialize};
 
-fn default_frequency() -> f64 { 60.0 }
-fn default_prefault() -> f64 { 1.0 }
-fn default_duty_cycles() -> f64 { 0.5 }
-fn default_enabled() -> bool { true }
+fn default_frequency() -> f64 {
+    60.0
+}
+fn default_prefault() -> f64 {
+    1.0
+}
+fn default_duty_cycles() -> f64 {
+    0.5
+}
+fn default_enabled() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Network {
@@ -54,7 +62,11 @@ pub struct CalculationOptions {
 
 impl Default for CalculationOptions {
     fn default() -> Self {
-        Self { fault_r_ohm: 0.0, fault_x_ohm: 0.0, duty_cycles: 0.5 }
+        Self {
+            fault_r_ohm: 0.0,
+            fault_x_ohm: 0.0,
+            duty_cycles: 0.5,
+        }
     }
 }
 
@@ -81,6 +93,8 @@ pub struct Branch {
     pub name: String,
     pub from: String,
     pub to: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
     #[serde(default, skip_serializing_if = "ConductorSet::is_empty")]
     pub conductors: ConductorSet,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -100,12 +114,20 @@ pub struct Branch {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rating_a: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
+    pub rating_kva: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub impedance_percent: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub xr_ratio: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub length_m: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
 }
 
-fn default_branch_kind() -> String { "impedance".to_string() }
+fn default_branch_kind() -> String {
+    "impedance".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
@@ -115,6 +137,8 @@ pub struct Source {
     #[serde(default)]
     pub name: String,
     pub bus: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
     pub z1_pu: Impedance,
     pub z2_pu: Impedance,
     #[serde(default)]
@@ -129,8 +153,12 @@ pub struct Source {
     pub notes: String,
 }
 
-fn default_source_kind() -> String { "source".to_string() }
-fn is_zero(v: &f64) -> bool { v.abs() < 1e-15 }
+fn default_source_kind() -> String {
+    "source".to_string()
+}
+fn is_zero(v: &f64) -> bool {
+    v.abs() < 1e-15
+}
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Impedance {
@@ -163,15 +191,25 @@ impl ConductorSet {
 }
 
 impl Impedance {
-    pub fn new(r: f64, x: f64) -> Self { Self { r, x } }
-    pub fn to_complex(self) -> Complex { Complex::new(self.r, self.x) }
-    pub fn from_complex(z: Complex) -> Self { Self { r: z.re, x: z.im } }
+    pub fn new(r: f64, x: f64) -> Self {
+        Self { r, x }
+    }
+    pub fn to_complex(self) -> Complex {
+        Complex::new(self.r, self.x)
+    }
+    pub fn from_complex(z: Complex) -> Self {
+        Self { r: z.re, x: z.im }
+    }
 }
 
 impl Network {
     pub fn new(base_mva: f64) -> Self {
         Self {
-            project: ProjectInfo { name: "Untitled short-circuit study".to_string(), revision: "A".to_string(), ..ProjectInfo::default() },
+            project: ProjectInfo {
+                name: "Untitled short-circuit study".to_string(),
+                revision: "A".to_string(),
+                ..ProjectInfo::default()
+            },
             base_mva,
             frequency_hz: 60.0,
             prefault_voltage_pu: 1.0,
@@ -208,10 +246,30 @@ impl Network {
                 b.kind = default_branch_kind();
             }
             b.normalise_metadata_defaults();
+            if b.state.is_empty() {
+                b.state = if b.enabled {
+                    "normally_closed"
+                } else {
+                    "normally_open"
+                }
+                .to_string();
+            } else {
+                b.enabled = !b.state.contains("open") && b.state != "out_of_service";
+            }
         }
         for s in &mut self.sources {
             if s.kind.is_empty() {
                 s.kind = default_source_kind();
+            }
+            if s.state.is_empty() {
+                s.state = if s.enabled {
+                    "in_service"
+                } else {
+                    "out_of_service"
+                }
+                .to_string();
+            } else {
+                s.enabled = !s.state.contains("open") && s.state != "out_of_service";
             }
         }
     }
@@ -226,7 +284,14 @@ impl Network {
         if self.bus_index(id).is_some() {
             return Err(FaultCalcError::new(format!("duplicate bus id {id}")));
         }
-        self.buses.push(Bus { id: id.to_string(), name: name.to_string(), kv_ll, x, y, notes: String::new() });
+        self.buses.push(Bus {
+            id: id.to_string(),
+            name: name.to_string(),
+            kv_ll,
+            x,
+            y,
+            notes: String::new(),
+        });
         Ok(())
     }
 
@@ -235,16 +300,28 @@ impl Network {
             return Err(FaultCalcError::new("branch id cannot be blank"));
         }
         if self.branch_index(&branch.id).is_some() {
-            return Err(FaultCalcError::new(format!("duplicate branch id {}", branch.id)));
+            return Err(FaultCalcError::new(format!(
+                "duplicate branch id {}",
+                branch.id
+            )));
         }
         if self.bus_index(&branch.from).is_none() {
-            return Err(FaultCalcError::new(format!("branch {} references missing from bus {}", branch.id, branch.from)));
+            return Err(FaultCalcError::new(format!(
+                "branch {} references missing from bus {}",
+                branch.id, branch.from
+            )));
         }
         if self.bus_index(&branch.to).is_none() {
-            return Err(FaultCalcError::new(format!("branch {} references missing to bus {}", branch.id, branch.to)));
+            return Err(FaultCalcError::new(format!(
+                "branch {} references missing to bus {}",
+                branch.id, branch.to
+            )));
         }
         if branch.from == branch.to {
-            return Err(FaultCalcError::new(format!("branch {} connects a bus to itself", branch.id)));
+            return Err(FaultCalcError::new(format!(
+                "branch {} connects a bus to itself",
+                branch.id
+            )));
         }
         if branch.kind.is_empty() {
             branch.kind = default_branch_kind();
@@ -259,10 +336,16 @@ impl Network {
             return Err(FaultCalcError::new("source id cannot be blank"));
         }
         if self.source_index(&source.id).is_some() {
-            return Err(FaultCalcError::new(format!("duplicate source id {}", source.id)));
+            return Err(FaultCalcError::new(format!(
+                "duplicate source id {}",
+                source.id
+            )));
         }
         if self.bus_index(&source.bus).is_none() {
-            return Err(FaultCalcError::new(format!("source {} references missing bus {}", source.id, source.bus)));
+            return Err(FaultCalcError::new(format!(
+                "source {} references missing bus {}",
+                source.id, source.bus
+            )));
         }
         if source.kind.is_empty() {
             source.kind = default_source_kind();
@@ -271,19 +354,34 @@ impl Network {
         Ok(())
     }
 
-    pub fn add_utility_source(&mut self, id: &str, name: &str, bus_id: &str, short_circuit_mva: f64, xr: f64, z0_multiplier: f64) -> Result<()> {
+    pub fn add_utility_source(
+        &mut self,
+        id: &str,
+        name: &str,
+        bus_id: &str,
+        short_circuit_mva: f64,
+        xr: f64,
+        z0_multiplier: f64,
+    ) -> Result<()> {
         if short_circuit_mva <= 0.0 {
-            return Err(FaultCalcError::new(format!("utility source {id} short-circuit MVA must be positive")));
+            return Err(FaultCalcError::new(format!(
+                "utility source {id} short-circuit MVA must be positive"
+            )));
         }
         let xr = if xr <= 0.0 { 10.0 } else { xr };
         let mag = self.base_mva / short_circuit_mva;
         let z1 = z_from_magnitude_xr(mag, xr);
-        let z0 = if z0_multiplier <= 0.0 { z1 } else { z1.scale(z0_multiplier) };
+        let z0 = if z0_multiplier <= 0.0 {
+            z1
+        } else {
+            z1.scale(z0_multiplier)
+        };
         self.add_source(Source {
             id: id.to_string(),
             kind: "utility".to_string(),
             name: name.to_string(),
             bus: bus_id.to_string(),
+            state: "in_service".to_string(),
             z1_pu: Impedance::from_complex(z1),
             z2_pu: Impedance::from_complex(z1),
             z0_pu: Impedance::from_complex(z0),
@@ -295,12 +393,28 @@ impl Network {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn add_transformer(&mut self, id: &str, name: &str, from: &str, to: &str, kva: f64, kv_ll: f64, impedance_percent: f64, xr: f64, z0_percent: f64, grounded: bool) -> Result<()> {
+    pub fn add_transformer(
+        &mut self,
+        id: &str,
+        name: &str,
+        from: &str,
+        to: &str,
+        kva: f64,
+        kv_ll: f64,
+        impedance_percent: f64,
+        xr: f64,
+        z0_percent: f64,
+        grounded: bool,
+    ) -> Result<()> {
         if kva <= 0.0 {
-            return Err(FaultCalcError::new(format!("transformer {id} kVA must be positive")));
+            return Err(FaultCalcError::new(format!(
+                "transformer {id} kVA must be positive"
+            )));
         }
         if impedance_percent <= 0.0 {
-            return Err(FaultCalcError::new(format!("transformer {id} impedance percent must be positive")));
+            return Err(FaultCalcError::new(format!(
+                "transformer {id} impedance percent must be positive"
+            )));
         }
         let xr = if xr <= 0.0 { 7.0 } else { xr };
         let base_on_own_mva = kva / 1000.0;
@@ -318,6 +432,7 @@ impl Network {
             name: name.to_string(),
             from: from.to_string(),
             to: to.to_string(),
+            state: "normally_closed".to_string(),
             conductors: ConductorSet::default(),
             primary_connection: "delta".to_string(),
             secondary_connection: "grounded_wye".to_string(),
@@ -328,6 +443,9 @@ impl Network {
             has_z0: grounded,
             enabled: true,
             rating_a,
+            rating_kva: kva,
+            impedance_percent,
+            xr_ratio: xr,
             length_m: 0.0,
             notes: format!("{kva:.0} kVA, {impedance_percent:.2}%Z"),
         })
@@ -382,7 +500,10 @@ impl Network {
                 return Err(FaultCalcError::new(format!("duplicate bus id {}", b.id)));
             }
             if b.kv_ll <= 0.0 {
-                return Err(FaultCalcError::new(format!("bus {} has non-positive kv_ll", b.id)));
+                return Err(FaultCalcError::new(format!(
+                    "bus {} has non-positive kv_ll",
+                    b.id
+                )));
             }
         }
         for br in &self.branches {
@@ -390,13 +511,22 @@ impl Network {
                 continue;
             }
             if self.bus_index(&br.from).is_none() || self.bus_index(&br.to).is_none() {
-                return Err(FaultCalcError::new(format!("branch {} references a missing bus", br.id)));
+                return Err(FaultCalcError::new(format!(
+                    "branch {} references a missing bus",
+                    br.id
+                )));
             }
             if br.from == br.to {
-                return Err(FaultCalcError::new(format!("branch {} connects a bus to itself", br.id)));
+                return Err(FaultCalcError::new(format!(
+                    "branch {} connects a bus to itself",
+                    br.id
+                )));
             }
             if br.z1_pu.to_complex().abs() < 1e-14 || br.z2_pu.to_complex().abs() < 1e-14 {
-                return Err(FaultCalcError::new(format!("branch {} has near-zero positive or negative sequence impedance", br.id)));
+                return Err(FaultCalcError::new(format!(
+                    "branch {} has near-zero positive or negative sequence impedance",
+                    br.id
+                )));
             }
         }
         for source in &self.sources {
@@ -404,10 +534,16 @@ impl Network {
                 continue;
             }
             if self.bus_index(&source.bus).is_none() {
-                return Err(FaultCalcError::new(format!("source {} references a missing bus", source.id)));
+                return Err(FaultCalcError::new(format!(
+                    "source {} references a missing bus",
+                    source.id
+                )));
             }
             if source.z1_pu.to_complex().abs() < 1e-14 || source.z2_pu.to_complex().abs() < 1e-14 {
-                return Err(FaultCalcError::new(format!("source {} has near-zero positive or negative sequence impedance", source.id)));
+                return Err(FaultCalcError::new(format!(
+                    "source {} has near-zero positive or negative sequence impedance",
+                    source.id
+                )));
             }
         }
         Ok(())
@@ -416,7 +552,11 @@ impl Network {
 
 impl Bus {
     pub fn display_name(&self) -> String {
-        if self.name.is_empty() { self.id.clone() } else { self.name.clone() }
+        if self.name.is_empty() {
+            self.id.clone()
+        } else {
+            self.name.clone()
+        }
     }
 }
 
@@ -430,7 +570,10 @@ impl Branch {
                 self.secondary_connection = "grounded_wye".to_string();
             }
             if self.vector_shift_deg == 0.0 {
-                self.vector_shift_deg = default_transformer_vector_shift(&self.primary_connection, &self.secondary_connection);
+                self.vector_shift_deg = default_transformer_vector_shift(
+                    &self.primary_connection,
+                    &self.secondary_connection,
+                );
             }
         }
         if self.conductors.is_empty() {
@@ -517,7 +660,8 @@ mod tests {
     fn utility_source_builder_converts_short_circuit_mva_and_xr() {
         let mut net = Network::new(100.0);
         net.add_bus("util", "Utility", 12.47, 0.0, 0.0).unwrap();
-        net.add_utility_source("u1", "Utility", "util", 500.0, 10.0, 1.5).unwrap();
+        net.add_utility_source("u1", "Utility", "util", 500.0, 10.0, 1.5)
+            .unwrap();
 
         let source = &net.sources[0];
         assert_eq!(source.kind, "utility");
@@ -534,7 +678,19 @@ mod tests {
         let mut net = Network::new(100.0);
         net.add_bus("pri", "Primary", 12.47, 0.0, 0.0).unwrap();
         net.add_bus("sec", "Secondary", 0.6, 0.0, 0.0).unwrap();
-        net.add_transformer("tx", "Transformer", "pri", "sec", 2500.0, 0.6, 5.75, 7.0, 5.75, true).unwrap();
+        net.add_transformer(
+            "tx",
+            "Transformer",
+            "pri",
+            "sec",
+            2500.0,
+            0.6,
+            5.75,
+            7.0,
+            5.75,
+            true,
+        )
+        .unwrap();
 
         let branch = &net.branches[0];
         assert_eq!(branch.kind, "transformer");
@@ -542,7 +698,10 @@ mod tests {
         assert_eq!(branch.primary_connection, "delta");
         assert_eq!(branch.secondary_connection, "grounded_wye");
         assert_close(branch.vector_shift_deg, -30.0, 1e-12);
-        assert_eq!(branch.conductors.phases, vec!["A".to_string(), "B".to_string(), "C".to_string()]);
+        assert_eq!(
+            branch.conductors.phases,
+            vec!["A".to_string(), "B".to_string(), "C".to_string()]
+        );
         assert_eq!(branch.conductors.neutral, vec!["X0/N".to_string()]);
         assert_close(branch.z1_pu.r, 0.3252691193458119, 1e-15);
         assert_close(branch.z1_pu.x, 2.276883835420683, 1e-15);
@@ -554,7 +713,11 @@ mod tests {
         let net = sample_network();
         let json = net.to_json_pretty().unwrap();
         let case_value: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(case_value["buses"].as_array().unwrap().iter().all(|b| b.get("x").is_none() && b.get("y").is_none()));
+        assert!(case_value["buses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b.get("x").is_none() && b.get("y").is_none()));
         assert_eq!(case_value["buses"][0]["kv_ll"], 0.6);
         assert_eq!(case_value["branches"].as_array().unwrap().len(), 0);
         assert_eq!(case_value["sources"][0]["rating"], "infinite utility");
@@ -567,7 +730,13 @@ mod tests {
         assert_close(parsed.base_mva, net.base_mva, 1e-12);
         assert_close(parsed.sources[0].z1_pu.r, net.sources[0].z1_pu.r, 1e-15);
         assert_close(parsed.sources[0].z1_pu.x, net.sources[0].z1_pu.x, 1e-15);
-        assert_eq!(Network::from_json(&parsed.to_json_pretty().unwrap()).unwrap().buses.len(), net.buses.len());
+        assert_eq!(
+            Network::from_json(&parsed.to_json_pretty().unwrap())
+                .unwrap()
+                .buses
+                .len(),
+            net.buses.len()
+        );
     }
 
     #[test]
