@@ -4,157 +4,201 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2311161c'/%3E%3Cpath d='M14 24h36M14 32h36M14 40h36' stroke='%23fbbf24' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
-  <title>FaultCalc Rust WASM Workstation</title>
+  <title>FaultCalc Study Console</title>
   <style>
     :root {
-      --bg: #080b10;
-      --bg2: #12161d;
-      --panel: #11161c;
-      --panel2: #17202a;
-      --panel3: #202832;
-      --ink: #e8edf7;
-      --muted: #94a3b8;
-      --line: #33404b;
-      --line2: #4b5964;
-      --blue: #60a5fa;
-      --cyan: #67e8f9;
-      --gold: #fbbf24;
-      --green: #86efac;
-      --red: #fb7185;
-      --copper: #d97706;
-      --input: #090f15;
-      --shadow: 0 20px 55px rgba(0,0,0,.35);
+      --bg: #e5ebf0;
+      --panel: #f8fafc;
+      --panel2: #eef3f7;
+      --panel3: #e3eaf0;
+      --ink: #17212b;
+      --muted: #5d6b78;
+      --faint: #7b8794;
+      --line: #c4ced8;
+      --line2: #97a7b6;
+      --blue: #1769aa;
+      --cyan: #0b8497;
+      --gold: #9b6a09;
+      --green: #177245;
+      --red: #b4232f;
+      --copper: #9a5a22;
+      --input: #ffffff;
+      --surface: #ffffff;
+      --shadow: 0 10px 22px rgba(24,36,52,.14);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      background: linear-gradient(160deg, #06080c 0%, #0b1016 56%, #050607 100%);
+      background: var(--bg);
       color: var(--ink);
       overflow: hidden;
     }
     button, input, select, textarea { font: inherit; }
     button {
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, #1f2937, #111827);
+      background: #f7fafc;
       color: var(--ink);
       padding: 8px 11px;
-      border-radius: 10px;
+      border-radius: 4px;
       cursor: pointer;
-      transition: transform .08s ease, border-color .12s ease, background .12s ease;
+      transition: border-color .12s ease, background .12s ease, color .12s ease;
     }
-    button:hover { border-color: var(--blue); transform: translateY(-1px); }
-    button.primary { background: linear-gradient(180deg, #2563eb, #1d4ed8); border-color: #93c5fd; }
-    button.ghost { background: rgba(15,23,42,.65); }
-    button.danger:hover { border-color: var(--red); color: #fecdd3; }
-    button.small { padding: 5px 8px; border-radius: 8px; font-size: 12px; }
+    button:hover { border-color: var(--blue); background: #edf6ff; }
+    button:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); color: var(--faint); }
+    button.primary { background: #135f9d; border-color: #0d4c81; color: #f8fbff; font-weight: 800; }
+    button.ghost { background: #ffffff; }
+    button.danger:hover { border-color: var(--red); color: var(--red); }
+    button.small { padding: 5px 8px; border-radius: 3px; font-size: 12px; }
     input, select, textarea {
-      width: 100%; color: var(--ink); background: var(--input); border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; outline: none;
+      width: 100%; color: var(--ink); background: var(--input); border: 1px solid var(--line); border-radius: 3px; padding: 7px 8px; outline: none;
     }
     input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96,165,250,.12); }
     textarea { resize: vertical; }
-    .app { display: grid; grid-template-rows: 62px 1fr 190px; height: 100%; }
+    .app { display: grid; grid-template-rows: 74px 1fr 210px; height: 100%; }
     .topbar {
-      display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
-      padding: 9px 14px; background: rgba(7, 16, 31, .92); border-bottom: 1px solid rgba(148,163,184,.25); box-shadow: var(--shadow); z-index: 5;
-      backdrop-filter: blur(14px);
+      display: grid; grid-template-columns: 300px 1fr 360px; gap: 12px; align-items: center;
+      padding: 10px 12px; background: #202830; border-bottom: 1px solid #12181f; box-shadow: var(--shadow); z-index: 5;
     }
-    .brand { display: flex; align-items: center; gap: 10px; min-width: 310px; }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .mark {
-      width: 38px; height: 38px; border-radius: 12px;
-      background: linear-gradient(145deg, #0f172a, #1d4ed8 55%, #67e8f9);
-      box-shadow: inset 0 0 18px rgba(255,255,255,.12), 0 0 25px rgba(96,165,250,.16);
+      width: 42px; height: 42px; border-radius: 4px; border: 1px solid #6f7f8e;
+      background: #121920;
       position: relative;
     }
-    .mark:after { content: ""; position: absolute; left: 8px; right: 8px; top: 18px; height: 3px; background: #fbbf24; box-shadow: 0 -7px 0 rgba(251,191,36,.65), 0 7px 0 rgba(251,191,36,.45); border-radius: 9px; }
-    .brand h1 { margin: 0; font-size: 16px; letter-spacing: .03em; }
-    .brand .sub { color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .mark:after { content: ""; position: absolute; left: 7px; right: 7px; top: 19px; height: 3px; background: var(--gold); box-shadow: 0 -9px 0 rgba(215,160,50,.8), 0 9px 0 rgba(215,160,50,.6); }
+    .brand h1 { margin: 0; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: #f8fafc; }
+    .brand .sub { color: #bec8d2; font-size: 12px; margin-top: 1px; }
+    .topbar .field label { color: #d5dde5; }
+    .topbar input { background: #ffffff; border-color: #8493a1; }
     .project-strip { display: grid; grid-template-columns: 1.7fr .8fr .8fr .7fr; gap: 8px; align-items: end; }
-    .bar-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
-    .status-pill { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted); font-size: 12px; white-space: nowrap; background: rgba(15,23,42,.7); }
+    .bar-actions { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; justify-content: flex-end; }
+    .status-stack { display: grid; gap: 5px; min-width: 0; }
+    .calc-state { color: #cbd5df; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-pill { display: inline-flex; gap: 6px; align-items: center; border: 1px solid #52616f; border-radius: 3px; padding: 5px 8px; color: #e5edf4; font-size: 12px; white-space: nowrap; background: #121920; }
     .status-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
     .status-pill.good .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
     .status-pill.bad .status-dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
-    .workspace { min-height: 0; display: grid; grid-template-columns: 330px 1fr 390px; }
-    .left, .right { min-height: 0; overflow: auto; background: rgba(15,23,42,.85); border-right: 1px solid rgba(148,163,184,.22); }
-    .right { border-right: 0; border-left: 1px solid rgba(148,163,184,.22); }
-    .section { margin: 12px; border: 1px solid rgba(148,163,184,.20); background: rgba(17,24,39,.86); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
-    .section h2 { margin: 0; padding: 10px 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #cbd5e1; background: linear-gradient(180deg, rgba(51,65,85,.72), rgba(30,41,59,.56)); border-bottom: 1px solid rgba(148,163,184,.18); display: flex; justify-content: space-between; align-items: center; }
-    .section-body { padding: 12px; }
-	    .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .palette button { text-align: left; min-height: 50px; }
-    .palette b { display: block; font-size: 13px; }
-    .palette span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
-    .tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 8px; border-bottom: 1px solid rgba(148,163,184,.18); }
-    .tab.active { border-color: var(--blue); color: #bfdbfe; background: rgba(37,99,235,.18); }
+    .workspace { min-height: 0; display: grid; grid-template-columns: 340px 1fr 410px; }
+    .left, .right { min-height: 0; overflow: auto; background: #edf2f6; border-right: 1px solid var(--line); }
+    .right { border-right: 0; border-left: 1px solid var(--line); }
+    .section { margin: 0; border-bottom: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+    .section h2 { margin: 0; padding: 9px 12px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #253241; background: #e6edf3; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+    .section-body { padding: 10px 12px; }
+    .insert-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .insert-grid button { min-height: 54px; padding: 6px 4px; text-align: center; }
+    .insert-grid b { display: block; font-size: 12px; letter-spacing: .08em; }
+    .insert-grid span { display: block; color: var(--muted); font-size: 9px; margin-top: 3px; line-height: 1.1; }
+    .basis-grid, .audit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .basis-cell, .audit-cell { background: var(--surface); border: 1px solid var(--line); padding: 7px; min-height: 48px; }
+    .basis-cell .label, .audit-cell .label { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+    .basis-cell .value, .audit-cell .value { margin-top: 3px; color: var(--ink); font-size: 12px; font-weight: 750; }
+    .audit-cell.good .value { color: var(--green); }
+    .audit-cell.warning .value { color: var(--gold); }
+    .audit-cell.bad .value { color: var(--red); }
+    .tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+    .tab.active { border-color: var(--blue); color: #0d4c81; background: #e6f3ff; }
     .field { margin-bottom: 10px; }
     .field label { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
     .field label .unit { color: #64748b; text-transform: none; letter-spacing: 0; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .list { display: flex; flex-direction: column; gap: 7px; }
-    .list-item { border: 1px solid var(--line); background: rgba(8,17,31,.72); border-radius: 12px; padding: 9px; cursor: pointer; position: relative; }
-    .list-item:hover, .list-item.selected { border-color: var(--blue); background: rgba(15,23,42,.92); }
+    .list-item { border: 1px solid var(--line); background: var(--surface); border-radius: 3px; padding: 8px; cursor: pointer; position: relative; }
+    .list-item:hover, .list-item.selected { border-color: var(--blue); background: #eef7ff; }
     .list-item.selected:before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; background: var(--gold); border-radius: 99px; }
     .item-title { font-weight: 750; font-size: 13px; }
     .item-sub { color: var(--muted); font-size: 11px; margin-top: 3px; }
-    .tag { display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1; background: rgba(51,65,85,.55); border: 1px solid rgba(148,163,184,.2); padding: 2px 6px; border-radius: 999px; font-size: 10px; margin-right: 4px; }
-    .canvas-wrap { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #070c12; }
-    .canvas-frame { position: absolute; inset: 12px; border: 1px solid rgba(148,163,184,.26); border-radius: 20px; overflow: hidden; background: linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px), rgba(4,10,20,.72); background-size: 28px 28px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03); }
+    .tag { display: inline-flex; align-items: center; gap: 4px; color: #263241; background: #eef4f9; border: 1px solid var(--line2); padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-right: 4px; }
+    .canvas-wrap { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #dce5ec; }
+    .canvas-frame { position: absolute; inset: 0; border: 0; overflow: hidden; background: linear-gradient(rgba(74,93,112,.13) 1px, transparent 1px), linear-gradient(90deg, rgba(74,93,112,.13) 1px, transparent 1px), #fbfdff; background-size: 28px 28px; }
     svg { width: 100%; height: 100%; display: block; }
-    .canvas-title { position: absolute; left: 24px; top: 22px; display: flex; gap: 8px; align-items: center; color: #cbd5e1; font-size: 12px; z-index: 2; }
-    .legend { position: absolute; right: 24px; top: 22px; display: flex; gap: 8px; font-size: 11px; color: var(--muted); z-index: 2; }
-    .legend span { border: 1px solid rgba(148,163,184,.22); background: rgba(15,23,42,.82); border-radius: 999px; padding: 5px 8px; }
-    .canvas-note { position: absolute; left: 24px; bottom: 22px; right: 24px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
-    .canvas-tools { position: absolute; left: 24px; top: 56px; display: flex; gap: 6px; align-items: center; z-index: 3; }
-    .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid rgba(148,163,184,.22); background: rgba(15,23,42,.82); border-radius: 999px; padding: 5px 8px; }
+    .canvas-title { position: absolute; left: 12px; top: 12px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
+    .legend { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
+    .legend span { border: 1px solid var(--line); background: rgba(255,255,255,.92); border-radius: 3px; padding: 5px 7px; }
+    .canvas-note { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px; color: #435265; font-size: 11px; pointer-events: none; }
+    .canvas-tools { position: absolute; left: 12px; top: 46px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+    .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
     .tool-check input { width: auto; }
+    .model-summary { position: absolute; left: 12px; bottom: 36px; width: min(480px, calc(100% - 24px)); z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none; }
+    .model-metric { border: 1px solid rgba(151,167,182,.88); background: rgba(255,255,255,.92); padding: 6px 7px; }
+    .model-metric .label { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+    .model-metric .value { color: var(--ink); font-size: 13px; font-weight: 800; margin-top: 2px; }
     .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
-    .kpi { border: 1px solid rgba(148,163,184,.2); border-radius: 14px; padding: 10px; background: rgba(8,17,31,.65); }
+    .kpi { border: 1px solid var(--line); border-radius: 3px; padding: 9px; background: var(--surface); }
     .kpi .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
     .kpi .value { margin-top: 4px; font-size: 20px; font-weight: 800; }
     .kpi .subv { color: var(--muted); font-size: 11px; margin-top: 1px; }
-    .bottom { min-height: 0; display: grid; grid-template-columns: 1fr 380px; background: rgba(7,16,31,.94); border-top: 1px solid rgba(148,163,184,.22); }
+    .bottom { min-height: 0; display: grid; grid-template-columns: 1fr 390px; background: #edf2f6; border-top: 1px solid var(--line); }
     .results { overflow: auto; padding: 10px 12px; }
-    .issue-log { overflow: auto; border-left: 1px solid rgba(148,163,184,.22); padding: 10px 12px; }
+    .issue-log { overflow: auto; border-left: 1px solid var(--line); padding: 10px 12px; }
+    .footer-heading { color: #344254; font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; margin-bottom: 7px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { border-bottom: 1px solid rgba(148,163,184,.15); padding: 7px 8px; text-align: left; white-space: nowrap; }
-    th { color: #cbd5e1; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: rgba(30,41,59,.75); position: sticky; top: 0; z-index: 2; }
+    th { color: #263241; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: #e4ebf1; position: sticky; top: 0; z-index: 2; }
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .warn, .ok, .bad { border-radius: 12px; padding: 9px 10px; font-size: 12px; margin-bottom: 7px; line-height: 1.35; }
-    .warn { border: 1px solid rgba(251,191,36,.45); background: rgba(251,191,36,.10); color: #fde68a; }
-    .ok { border: 1px solid rgba(134,239,172,.36); background: rgba(134,239,172,.08); color: #bbf7d0; }
-    .bad { border: 1px solid rgba(251,113,133,.42); background: rgba(251,113,133,.08); color: #fecdd3; }
+    .warn, .ok, .bad { border-radius: 3px; padding: 8px 9px; font-size: 12px; margin-bottom: 7px; line-height: 1.35; }
+    .warn { border: 1px solid rgba(155,106,9,.4); background: rgba(246,193,80,.18); color: #5c3d00; }
+    .ok { border: 1px solid rgba(23,114,69,.32); background: rgba(35,145,88,.11); color: #0e5131; }
+    .bad { border: 1px solid rgba(180,35,47,.35); background: rgba(180,35,47,.09); color: #8a1b24; }
     .inspector-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .inspector-title { font-weight: 800; }
     .muted { color: var(--muted); }
-    .raw-json { min-height: 330px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; }
+    .raw-json { min-height: 280px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; }
     .hidden { display: none !important; }
     .busbar { stroke: var(--copper); stroke-width: 8; stroke-linecap: round; }
-    .bus-card { fill: rgba(15,23,42,.96); stroke: #60a5fa; stroke-width: 1.6; rx: 14; filter: drop-shadow(0 10px 15px rgba(0,0,0,.25)); cursor: move; }
+    .bus-card { fill: #ffffff; stroke: #1769aa; stroke-width: 1.6; rx: 4; filter: drop-shadow(0 7px 10px rgba(24,36,52,.18)); cursor: move; }
     .bus-card.selected { stroke: var(--gold); stroke-width: 2.4; }
-    .svg-label { fill: #e5edf7; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
-    .svg-small { fill: #94a3b8; font-size: 10px; pointer-events: none; user-select: none; }
-    .branch-line { stroke: #93c5fd; stroke-width: 3.5; fill: none; }
-    .branch-line.feeder { stroke: #67e8f9; }
-    .branch-line.transformer { stroke: #c084fc; }
-    .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #fbbf24; }
+    .svg-label { fill: #17212b; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
+    .svg-small { fill: #596879; font-size: 10px; pointer-events: none; user-select: none; }
+    .branch-line { stroke: #1769aa; stroke-width: 3.5; fill: none; }
+    .branch-line.feeder { stroke: #0b8497; }
+    .branch-line.transformer { stroke: #6d5cae; }
+    .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #a66f00; }
     .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
     .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
     .branch-selected { stroke: var(--gold); stroke-width: 6; }
-    .equip-symbol { fill: #07101f; stroke: #cbd5e1; stroke-width: 2; cursor: pointer; }
-    .equip-label { fill: #e5edf7; font-size: 9px; font-weight: 800; pointer-events: none; }
-    .source-symbol { fill: rgba(7,16,31,.94); stroke: #86efac; stroke-width: 2; cursor: pointer; }
+    .equip-symbol { fill: #ffffff; stroke: #2c3948; stroke-width: 2; cursor: pointer; }
+    .equip-label { fill: #17212b; font-size: 9px; font-weight: 800; pointer-events: none; }
+    .source-symbol { fill: #ffffff; stroke: #177245; stroke-width: 2; cursor: pointer; }
     .source-selected { stroke: var(--gold); stroke-width: 3; }
-    .fault-chip { fill: rgba(251,191,36,.16); stroke: rgba(251,191,36,.65); stroke-width: 1; rx: 7; }
-    .fault-chip-text { fill: #fde68a; font-size: 10px; font-weight: 800; pointer-events: none; }
-    .danger-text { fill: #fecdd3; }
+    .fault-chip { fill: rgba(246,193,80,.22); stroke: rgba(155,106,9,.7); stroke-width: 1; rx: 7; }
+    .fault-chip-text { fill: #4e3500; font-size: 10px; font-weight: 800; pointer-events: none; }
+    .danger-text { fill: #b4232f; }
     .mini-table { font-size: 11px; }
     .mini-table th, .mini-table td { padding: 5px 6px; }
-    .pass { color: #bbf7d0; }
-    .fail { color: #fecdd3; }
+    .pass { color: var(--green); font-weight: 800; }
+    .fail { color: var(--red); font-weight: 800; }
     .route-tools { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+    @media (min-width: 761px) and (max-width: 1180px) {
+      body { overflow: auto; }
+      .app { min-width: 1060px; min-height: 100%; height: auto; grid-template-rows: auto 720px 240px; }
+      .topbar { grid-template-columns: 1fr; }
+      .workspace { grid-template-columns: 310px 1fr 360px; }
+    }
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .app { min-width: 0; min-height: 100%; height: auto; grid-template-rows: auto auto auto; }
+      .topbar, .bottom, .brand, .brand > div, .project-strip > *, .bar-actions > *, .workspace, .left, .right, .section, .section-body { min-width: 0; max-width: 100%; }
+      .brand h1, .brand .sub { overflow-wrap: anywhere; }
+      button { min-width: 0; overflow-wrap: anywhere; }
+      .topbar { grid-template-columns: 1fr; }
+      .project-strip { grid-template-columns: 1fr 1fr; }
+      .bar-actions { grid-template-columns: 1fr 1fr; }
+      .status-stack { grid-column: 1 / -1; }
+      .workspace { display: block; }
+      .left, .right { overflow: visible; border: 0; border-bottom: 1px solid var(--line); }
+      .insert-grid { grid-template-columns: 1fr 1fr; }
+      .section-body, .results { overflow-x: auto; }
+      .canvas-wrap { height: 540px; min-height: 540px; }
+      .legend { left: 12px; right: 12px; top: 82px; flex-wrap: wrap; }
+      .model-summary { grid-template-columns: 1fr 1fr; bottom: 54px; }
+      .canvas-note { flex-direction: column; gap: 4px; font-size: 10px; }
+      .bottom { display: block; }
+      .issue-log { border-left: 0; border-top: 1px solid var(--line); }
+      .kpi-row { grid-template-columns: 1fr 1fr; }
+    }
     @media print {
       body { overflow: visible; background: #fff; color: #111827; }
       .topbar, .left, .right, .canvas-wrap, .issue-log { display: none !important; }
@@ -166,8 +210,8 @@
       td, th { border-color: #d1d5db; }
     }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; border: 2px solid #0f172a; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #9aa8b3; border-radius: 999px; border: 2px solid #edf2f6; }
+    ::-webkit-scrollbar-track { background: #edf2f6; }
   </style>
 </head>
 <body>
@@ -175,7 +219,7 @@
   <header class="topbar">
     <div class="brand">
       <div class="mark" aria-hidden="true"></div>
-      <div><h1>FaultCalc Rust WASM Workstation</h1><div class="sub">Offline engineering-grade short-circuit model editor</div></div>
+      <div><h1>FaultCalc Study Console</h1><div class="sub">Local sequence-network short-circuit workstation</div></div>
     </div>
     <div class="project-strip">
       <div class="field" style="margin:0"><label>Project</label><input id="projectName" placeholder="Project name"></div>
@@ -184,7 +228,10 @@
       <div class="field" style="margin:0"><label>Revision</label><input id="projectRevision" placeholder="A"></div>
     </div>
     <div class="bar-actions">
-      <span id="wasmStatus" class="status-pill"><span class="status-dot"></span><span>Loading WASM</span></span>
+      <div class="status-stack">
+        <span id="wasmStatus" class="status-pill"><span class="status-dot"></span><span>Loading WASM</span></span>
+        <span id="calcState" class="calc-state">Case not run</span>
+      </div>
       <button class="ghost" id="btnImport">Import</button><input id="fileInput" type="file" accept=".json,application/json" class="hidden">
       <button class="ghost" id="btnExportCase">Export case</button>
       <button class="primary" id="btnRun">Run study</button>
@@ -193,17 +240,17 @@
 
   <main class="workspace">
     <aside class="left">
-      <section class="section"><h2>Equipment palette</h2><div class="section-body palette">
-        <button id="btnAddBus"><b>Bus</b><span>Switchboard, panel, MCC</span></button>
-        <button id="btnAddUtility"><b>Utility</b><span>Source equivalent</span></button>
-        <button id="btnAddTransformer"><b>Transformer</b><span>Sequence branch</span></button>
-        <button id="btnAddFeeder"><b>Feeder</b><span>Cable or bus duct</span></button>
-        <button id="btnAddMotor"><b>Motor</b><span>Contribution source</span></button>
-        <button id="btnAddGenerator"><b>Generator</b><span>Synchronous source</span></button>
-        <button id="btnAddSwitch"><b>Switch</b><span>Open/closed branch</span></button>
-        <button id="btnAddBreaker"><b>Breaker</b><span>Interrupting device</span></button>
-        <button id="btnAddMainTieMain"><b>Main-tie-main</b><span>Template lineup</span></button>
-        <button id="btnAutoLayout"><b>Layout</b><span>Arrange one-line</span></button>
+      <section class="section"><h2>Insert equipment</h2><div class="section-body insert-grid">
+        <button id="btnAddBus"><b>BUS</b><span>Switchgear / MCC / panel</span></button>
+        <button id="btnAddUtility"><b>UTIL</b><span>Utility source</span></button>
+        <button id="btnAddTransformer"><b>XFMR</b><span>Transformer branch</span></button>
+        <button id="btnAddFeeder"><b>FDR</b><span>Feeder / bus duct</span></button>
+        <button id="btnAddMotor"><b>MTR</b><span>Motor source</span></button>
+        <button id="btnAddGenerator"><b>GEN</b><span>Synchronous source</span></button>
+        <button id="btnAddSwitch"><b>SW</b><span>Open switch</span></button>
+        <button id="btnAddBreaker"><b>CB</b><span>Breaker</span></button>
+        <button id="btnAddMainTieMain"><b>MTM</b><span>Main-tie-main</span></button>
+        <button id="btnAutoLayout"><b>AUTO</b><span>Arrange buses</span></button>
       </div></section>
 
       <section class="section"><h2>Study settings</h2><div class="section-body">
@@ -220,6 +267,13 @@
         <div class="field"><label>Project Description</label><textarea id="projectDescription" rows="2"></textarea></div>
       </div></section>
 
+      <section class="section"><h2>Calculation basis</h2><div class="section-body basis-grid">
+        <div class="basis-cell"><div class="label">Method</div><div class="value">Sequence networks</div></div>
+        <div class="basis-cell"><div class="label">Fault set</div><div class="value">3PH / SLG / LL / DLG</div></div>
+        <div class="basis-cell"><div class="label">Impedance</div><div class="value">Per-unit study base</div></div>
+        <div class="basis-cell"><div class="label">Runtime</div><div class="value">Local Rust WASM</div></div>
+      </div></section>
+
       <section class="section"><h2>System navigator</h2>
         <div class="tabs"><button class="tab active" data-tab="buses">Buses</button><button class="tab" data-tab="branches">Branches</button><button class="tab" data-tab="sources">Sources</button></div>
         <div class="section-body"><div id="navigatorList" class="list"></div></div>
@@ -228,22 +282,24 @@
 
     <section class="canvas-wrap">
       <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable one-line diagram"></svg></div>
-      <div class="canvas-title"><span class="tag">one-line editor</span><span id="canvasSubtitle">drag buses, inspect sequence data, then run Rust WASM study</span></div>
+      <div class="canvas-title"><span class="tag">one-line study model</span><span id="canvasSubtitle">snap-to-grid editable sequence network</span></div>
       <div class="canvas-tools">
         <button id="btnZoomOut" class="small ghost">-</button>
         <button id="btnZoomIn" class="small ghost">+</button>
         <button id="btnZoomFit" class="small ghost">Fit</button>
         <label class="tool-check"><input id="snapGrid" type="checkbox" checked> Snap</label>
       </div>
-      <div class="legend"><span>Gold badges: calculated bus duty</span><span>Click symbols to edit</span></div>
+      <div class="legend"><span>Duty badges: 3PH / SLG</span><span>Dashed: open state</span><span>Yg/D tags: transformer winding</span></div>
+      <div class="model-summary" id="modelSummaryPanel"></div>
       <div class="canvas-note"><span>Calculated values are engineering aids only. Validate with the applicable IEEE, ANSI, utility, and equipment data for issued work.</span><span id="saveState">local model ready</span></div>
     </section>
 
     <aside class="right">
-      <section class="section"><h2>Selection inspector</h2><div class="section-body" id="inspector"></div></section>
+      <section class="section"><h2>Selected equipment</h2><div class="section-body" id="inspector"></div></section>
       <section class="section"><h2>Equipment schedule</h2><div class="section-body"><table id="scheduleTable" class="mini-table"><thead><tr><th>Type</th><th>Name</th><th>Connection</th><th>Rating</th></tr></thead><tbody></tbody></table></div></section>
       <section class="section"><h2>Duty comparison</h2><div class="section-body"><table id="dutyTable" class="mini-table"><thead><tr><th>Equipment</th><th class="num">Rating A</th><th class="num">Duty A</th><th>Status</th></tr></thead><tbody></tbody></table></div></section>
-      <section class="section"><h2>Case JSON</h2><div class="section-body">
+      <section class="section"><h2>Calculation audit</h2><div class="section-body"><div id="auditPanel" class="audit-grid"></div></div></section>
+      <section class="section"><h2>Case data</h2><div class="section-body">
         <div class="grid-2"><button id="btnRefreshJson" class="small ghost">Refresh text</button><button id="btnApplyJson" class="small ghost">Apply text</button></div>
         <div style="height:8px"></div>
         <textarea id="rawJson" class="raw-json" spellcheck="false"></textarea>
@@ -258,6 +314,7 @@
       <table id="resultsTable"><thead><tr><th>Bus</th><th>kV</th><th>Fault</th><th class="num">Sym kA</th><th class="num">Peak kA</th><th class="num">Asym RMS kA</th><th class="num">X/R</th><th class="num">Ground kA</th></tr></thead><tbody></tbody></table>
     </section>
     <section class="issue-log">
+      <div class="footer-heading">Report controls and model messages</div>
       <div class="grid-2"><button id="btnExportReport" class="small ghost">Export report JSON</button><button id="btnExportCsv" class="small ghost">Export CSV</button></div>
       <div style="height:8px"></div>
       <div class="grid-2"><button id="btnExportHtml" class="small ghost">Export HTML</button><button id="btnPrintReport" class="small ghost">Print view</button></div>
@@ -276,6 +333,8 @@ const escapeHtml = (s) => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;"
 let network = null;
 let report = null;
 let wasmReady = false;
+let dirty = false;
+let lastRunAt = null;
 let selected = { type: "bus", id: null };
 let currentTab = "buses";
 let drag = null;
@@ -289,12 +348,20 @@ async function boot() {
   await bootWasm();
   if (wasmReady && typeof faultcalcSample === "function") {
     const saved = localStorage.getItem("faultcalc-workstation-case");
-    network = saved ? JSON.parse(saved) : JSON.parse(faultcalcSample());
+    try {
+      network = saved ? JSON.parse(saved) : JSON.parse(faultcalcSample());
+    } catch (err) {
+      console.warn("Stored case could not be loaded; restoring the built-in sample.", err);
+      localStorage.removeItem("faultcalc-workstation-case");
+      network = JSON.parse(faultcalcSample());
+    }
   } else {
     network = fallbackSample();
   }
+  network = normalizeCase(network);
   selected = { type: "bus", id: network.buses[0]?.id || null };
   syncProjectInputs(); syncStudyInputs(); refreshJson(); render();
+  updateCommandState();
   if (wasmReady) runStudy();
 }
 
@@ -412,24 +479,61 @@ function syncStudyInputs() {
   $("faultX").value = network.options.fault_x_ohm ?? 0;
   $("dutyCycles").value = network.options.duty_cycles ?? .5;
 }
-function modelChanged(rerender=true) { report = null; localStorage.setItem("faultcalc-workstation-case", JSON.stringify(network)); $("saveState").textContent = "edited locally"; refreshJson(false); if (rerender) render(); }
+function normalizeCase(value) {
+  const next = value && typeof value === "object" ? value : {};
+  next.project = next.project && typeof next.project === "object" ? next.project : {};
+  next.options = next.options && typeof next.options === "object" ? next.options : {};
+  next.buses = Array.isArray(next.buses) ? next.buses : [];
+  next.branches = Array.isArray(next.branches) ? next.branches : [];
+  next.sources = Array.isArray(next.sources) ? next.sources : [];
+  next.base_mva = num(next.base_mva || 100);
+  next.frequency_hz = num(next.frequency_hz || 60);
+  next.prefault_voltage_pu = num(next.prefault_voltage_pu || 1);
+  return next;
+}
+function modelChanged(rerender=true) {
+  report = null;
+  dirty = true;
+  lastRunAt = null;
+  localStorage.setItem("faultcalc-workstation-case", JSON.stringify(network));
+  $("saveState").textContent = "case modified - run required";
+  refreshJson(false);
+  if (rerender) render();
+  else {
+    renderModelSummary();
+    renderAuditPanel();
+    renderResults();
+    renderDutyComparison();
+    renderIssues();
+    updateCommandState();
+  }
+}
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
 function runStudy() {
-  if (!wasmReady) { showIssue("bad", "The WebAssembly engine is not ready. Rebuild with `make wasm` or open the generated standalone file."); return; }
+  if (!wasmReady) { showIssue("bad", "The WebAssembly engine is not ready. Rebuild with `make wasm` or open the generated standalone file."); updateCommandState(); return; }
+  $("calcState").textContent = "Solving sequence networks...";
+  $("btnRun").disabled = true;
   try {
     const raw = faultcalcCalculate(JSON.stringify(network));
     const response = JSON.parse(raw);
     if (!response.ok) throw new Error(response.error || "calculation failed");
     report = response.report;
-    $("saveState").textContent = "study calculated in WASM";
+    dirty = false;
+    lastRunAt = new Date();
+    $("saveState").textContent = "study calculated in Rust WASM";
     render();
   } catch (err) {
-    report = null; renderResults(); renderIssues([String(err.message || err)], true);
+    report = null;
+    dirty = true;
+    render();
+    renderIssues([String(err.message || err)], true);
+  } finally {
+    updateCommandState();
   }
 }
 
-function render() { renderNavigator(); renderInspector(); renderCanvas(); renderResults(); renderSchedule(); renderDutyComparison(); renderIssues(); }
+function render() { renderNavigator(); renderInspector(); renderCanvas(); renderResults(); renderSchedule(); renderDutyComparison(); renderIssues(); renderModelSummary(); renderAuditPanel(); updateCommandState(); }
 function renderNavigator() {
   const list = $("navigatorList");
   const items = currentTab === "buses" ? network.buses : currentTab === "branches" ? network.branches : network.sources;
@@ -437,7 +541,11 @@ function renderNavigator() {
     const type = currentTab === "buses" ? "bus" : currentTab === "branches" ? "branch" : "source";
     const sel = selected.type === type && selected.id === item.id;
     const title = item.name || item.id;
-    const sub = type === "bus" ? `${item.kv_ll} kV line-to-line` : type === "branch" ? `${busLabel(item.from)} to ${busLabel(item.to)} · ${item.kind || "branch"}` : `${busLabel(item.bus)} · ${item.kind || "source"}`;
+    const sub = type === "bus"
+      ? `${item.kv_ll} kV line-to-line`
+      : type === "branch"
+        ? `${busLabel(item.from)} to ${busLabel(item.to)} · ${item.kind || "branch"} · ${stateLabel(item.state || (item.enabled === false ? "open" : "closed"))}`
+        : `${busLabel(item.bus)} · ${item.kind || "source"} · ${stateLabel(item.state || (item.enabled === false ? "open" : "closed"))}`;
     return `<div class="list-item ${sel ? "selected" : ""}" onclick="selectItem('${type}','${item.id}')"><div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(sub)}</div></div>`;
   }).join("") || `<div class="muted">No ${currentTab} yet.</div>`;
 }
@@ -546,16 +654,22 @@ function branchSymbol(br, x, y) {
     return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-15}" cy="${y}" r="13"/><circle class="equip-symbol" cx="${x+15}" cy="${y}" r="13"/><text class="equip-label" x="${x-15}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+15}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
   }
   if (kind === "breaker" || kind === "tie") {
-    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-20}" y="${y-12}" width="40" height="24" rx="3"/><line x1="${x-13}" y1="${y}" x2="${x+13}" y2="${y}" stroke="#cbd5e1" stroke-width="2"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+25}" text-anchor="middle">${stateLabel(state)}</text></g>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-20}" y="${y-12}" width="40" height="24" rx="3"/><line x1="${x-13}" y1="${y}" x2="${x+13}" y2="${y}" stroke="#2c3948" stroke-width="2"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+25}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
   if (kind === "switch") {
-    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#cbd5e1" stroke-width="2"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#cbd5e1" stroke-width="2"/>`;
+    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#2c3948" stroke-width="2"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#2c3948" stroke-width="2"/>`;
     return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-19}" cy="${y}" r="3"/><circle class="equip-symbol" cx="${x+19}" cy="${y}" r="3"/>${blade}<text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
-  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-17}" y="${y-9}" width="34" height="18" rx="4"/><line x1="${x-10}" y1="${y+8}" x2="${x+10}" y2="${y-8}" stroke="#cbd5e1" stroke-width="2"/></g>`;
+  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-17}" y="${y-9}" width="34" height="18" rx="4"/><line x1="${x-10}" y1="${y+8}" x2="${x+10}" y2="${y-8}" stroke="#2c3948" stroke-width="2"/></g>`;
 }
 function connectionGlyph(v) { return v === "delta" ? "D" : v === "grounding" ? "G" : v === "wye" ? "Y" : "Yg"; }
-function stateLabel(v) { return String(v || "").includes("open") ? "open" : "closed"; }
+function stateLabel(v) {
+  const state = String(v || "");
+  if (state === "out_of_service" || state.includes("open")) return "open";
+  if (state === "in_service") return "in service";
+  if (state === "emergency_parallel") return "emergency";
+  return "closed";
+}
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
 function renderSource(s) {
   const p = busPos(s.bus); const sx = p.x, sy = p.y - 92; const sel = selected.type === "source" && selected.id === s.id;
@@ -596,11 +710,11 @@ function fitCanvas() {
 function renderResults() {
   const kpi = $("kpiRow");
   if (!report) {
-    kpi.innerHTML = `<div class="kpi"><div class="label">Status</div><div class="value">Not run</div><div class="subv">press Run study</div></div><div class="kpi"><div class="label">Buses</div><div class="value">${network.buses.length}</div><div class="subv">model nodes</div></div><div class="kpi"><div class="label">Branches</div><div class="value">${network.branches.length}</div><div class="subv">series elements</div></div><div class="kpi"><div class="label">Sources</div><div class="value">${network.sources.length}</div><div class="subv">shunt sources</div></div>`;
+    kpi.innerHTML = `<div class="kpi"><div class="label">Study state</div><div class="value">Required</div><div class="subv">${wasmReady ? "run after edits" : "WASM unavailable"}</div></div><div class="kpi"><div class="label">Buses</div><div class="value">${network.buses.length}</div><div class="subv">model nodes</div></div><div class="kpi"><div class="label">Closed branches</div><div class="value">${closedBranchCount()}</div><div class="subv">${network.branches.length} total</div></div><div class="kpi"><div class="label">Enabled sources</div><div class="value">${enabledSourceCount()}</div><div class="subv">${network.sources.length} total</div></div>`;
     $("resultsTable").querySelector("tbody").innerHTML = "";
     return;
   }
-  kpi.innerHTML = `<div class="kpi"><div class="label">Max 3PH</div><div class="value">${fmtKA(report.summary.max_3ph_ka)}</div><div class="subv">${escapeHtml(report.summary.max_3ph_bus || "")} kA</div></div><div class="kpi"><div class="label">Max SLG</div><div class="value">${fmtKA(report.summary.max_slg_ka)}</div><div class="subv">${escapeHtml(report.summary.max_slg_bus || "")} kA</div></div><div class="kpi"><div class="label">Buses solved</div><div class="value">${report.buses.length}</div><div class="subv">all buses</div></div><div class="kpi"><div class="label">Engine</div><div class="value" style="font-size:16px">WASM</div><div class="subv">${escapeHtml(report.version)}</div></div>`;
+  kpi.innerHTML = `<div class="kpi"><div class="label">Max bolted 3PH</div><div class="value">${fmtKA(report.summary.max_3ph_ka)}</div><div class="subv">${escapeHtml(report.summary.max_3ph_bus || "")} kA</div></div><div class="kpi"><div class="label">Max ground SLG</div><div class="value">${fmtKA(report.summary.max_slg_ka)}</div><div class="subv">${escapeHtml(report.summary.max_slg_bus || "")} kA</div></div><div class="kpi"><div class="label">Buses solved</div><div class="value">${report.buses.length}</div><div class="subv">${resultRowCount()} result rows</div></div><div class="kpi"><div class="label">Engine</div><div class="value" style="font-size:16px">Rust WASM</div><div class="subv">${escapeHtml(report.version)}</div></div>`;
   const rows = [];
   for (const b of report.buses) for (const f of b.faults) rows.push(`<tr><td>${escapeHtml(b.bus)}</td><td>${fmt(b.kv_ll,3)}</td><td><span class="tag">${f.kind}</span></td><td class="num">${fmt(f.available_sym_ka,3)}</td><td class="num">${fmt(f.peak_asym_ka,3)}</td><td class="num">${fmt(f.asym_rms_ka,3)}</td><td class="num">${f.x_over_r === null ? "" : fmt(f.x_over_r,2)}</td><td class="num">${f.ground_return_ka === null ? "" : fmt(f.ground_return_ka,3)}</td></tr>`);
   $("resultsTable").querySelector("tbody").innerHTML = rows.join("");
@@ -617,8 +731,8 @@ function renderDutyComparison() {
   for (const br of network.branches) {
     const rating = num(br.rating_a);
     const duty = Math.max(maxFaultAmps(br.from), maxFaultAmps(br.to));
-    const status = !report ? "not run" : !rating ? "missing rating" : rating >= duty ? "pass" : "over duty";
-    const cls = status === "pass" ? "pass" : status === "over duty" ? "fail" : "muted";
+    const status = !report ? "NOT RUN" : !rating ? "MISSING" : rating >= duty ? "PASS" : "OVER DUTY";
+    const cls = status === "PASS" ? "pass" : status === "OVER DUTY" ? "fail" : "muted";
     rows.push(`<tr><td>${escapeHtml(br.name || br.id)}</td><td class="num">${rating ? fmt(rating,0) : ""}</td><td class="num">${duty ? fmt(duty,0) : ""}</td><td class="${cls}">${status}</td></tr>`);
   }
   $("dutyTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No branch ratings to compare.</td></tr>`;
@@ -629,13 +743,66 @@ function maxFaultAmps(busId) {
   return Math.max(...r.faults.map(f => num(f.available_sym_ka))) * 1000;
 }
 function renderIssues(extra, bad=false) {
-  const log = $("issueLog"); const messages = extra || [];
+  const log = $("issueLog"); const messages = extra ? [...extra] : [];
   if (report?.warnings?.length) messages.push(...report.warnings);
   const local = validateLocal(); if (local.length) messages.push(...local);
-  if (!messages.length) { log.innerHTML = `<div class="ok">No model validation warnings from the current run.</div><div class="muted" style="font-size:12px;line-height:1.45">This tool uses transparent symmetrical-component calculations. It does not embed proprietary IEEE or ANSI multiplying-factor tables.</div>`; return; }
+  if (!messages.length) {
+    const headline = report ? "No model validation warnings from the current run." : "No local model validation warnings. Run the study to calculate fault duties.";
+    log.innerHTML = `<div class="ok">${headline}</div><div class="muted" style="font-size:12px;line-height:1.45">This tool uses transparent symmetrical-component calculations. It does not embed proprietary IEEE or ANSI multiplying-factor tables.</div>`;
+    return;
+  }
   log.innerHTML = messages.map(m => `<div class="${bad ? "bad" : "warn"}">${escapeHtml(m)}</div>`).join("");
 }
-function showIssue(kind, msg) { $("issueLog").innerHTML = `<div class="${kind}">${escapeHtml(msg)}</div>`; }
+function showIssue(kind, msg) { $("issueLog").innerHTML = `<div class="${kind}">${escapeHtml(msg)}</div>`; renderAuditPanel(); }
+function renderModelSummary() {
+  const el = $("modelSummaryPanel");
+  if (!el || !network) return;
+  const warnings = modelWarningCount();
+  const peak = report ? `${fmtKA(report.summary.max_3ph_ka)} kA` : "pending";
+  el.innerHTML = [
+    modelMetric("Buses", network.buses.length, "network nodes"),
+    modelMetric("Closed branches", closedBranchCount(), `${network.branches.length} total`),
+    modelMetric("Enabled sources", enabledSourceCount(), `${network.sources.length} total`),
+    modelMetric("3PH peak", peak, warnings ? `${warnings} warnings` : "ready")
+  ].join("");
+}
+function modelMetric(label, value, sub) {
+  return `<div class="model-metric"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div><div class="label">${escapeHtml(sub)}</div></div>`;
+}
+function renderAuditPanel() {
+  const el = $("auditPanel");
+  if (!el || !network) return;
+  const warnings = modelWarningCount();
+  const audits = [
+    ["Engine", wasmReady ? "Rust WASM ready" : "Unavailable", wasmReady ? "good" : "bad"],
+    ["Result state", studyStatusText(), report && !dirty ? "good" : "warning"],
+    ["Study base", `${fmt(network.base_mva,3)} MVA / ${fmt(network.frequency_hz,2)} Hz`, ""],
+    ["Prefault", `${fmt(network.prefault_voltage_pu,3)} pu`, ""],
+    ["Fault set", "3PH SLG LL DLG", ""],
+    ["Open points", network.branches.filter(isOpen).length, ""],
+    ["Warnings", warnings, warnings ? "warning" : "good"],
+    ["Exports", report ? "enabled" : "locked", report ? "good" : "warning"]
+  ];
+  el.innerHTML = audits.map(([label, value, cls]) => `<div class="audit-cell ${cls}"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`).join("");
+}
+function updateCommandState() {
+  if (!network) return;
+  $("btnRun").disabled = !wasmReady;
+  ["btnExportReport","btnExportCsv","btnExportHtml","btnPrintReport"].forEach(id => { const btn = $(id); if (btn) btn.disabled = !report; });
+  const state = $("calcState");
+  if (state) state.textContent = studyStatusText();
+}
+function studyStatusText() {
+  if (!wasmReady) return "WASM unavailable - static fallback loaded";
+  if (!report) return dirty ? "Case edited - study required" : "Study not run";
+  if (dirty) return "Results stale - rerun required";
+  const suffix = lastRunAt ? ` at ${lastRunAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}` : "";
+  return `Calculated${suffix}`;
+}
+function closedBranchCount() { return network.branches.filter(br => !isOpen(br)).length; }
+function enabledSourceCount() { return network.sources.filter(s => !isOpen(s)).length; }
+function resultRowCount() { return report ? report.buses.reduce((n, b) => n + b.faults.length, 0) : 0; }
+function modelWarningCount() { return validateLocal().length + (report?.warnings?.length || 0); }
 function validateLocal() {
   const out = [];
   if (!network.sources.length) out.push("No source equivalents are defined.");
@@ -685,9 +852,9 @@ function nextId(prefix, arr) { let i = arr.length + 1; while (arr.find(x => x.id
 function deleteSelected() { if (!selected.id) return; if (selected.type === "bus") { network.branches = network.branches.filter(b => b.from !== selected.id && b.to !== selected.id); network.sources = network.sources.filter(s => s.bus !== selected.id); network.buses = network.buses.filter(b => b.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else if (selected.type === "branch") { network.branches = network.branches.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else { network.sources = network.sources.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } modelChanged(true); }
 function autoLayout() { const n = network.buses.length; network.buses.forEach((b,i) => { b.x = 140 + i * Math.min(230, 860 / Math.max(1,n-1)); b.y = i % 2 ? 340 : 250; }); }
 
-async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = JSON.parse(text); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
+async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
 function refreshJson(overwrite=true) { if (overwrite) $("rawJson").value = JSON.stringify(network, null, 2); }
-function applyJson() { try { network = JSON.parse($("rawJson").value); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
+function applyJson() { try { network = normalizeCase(JSON.parse($("rawJson").value)); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
 function download(name, text, type) { const blob = new Blob([text], {type}); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 function reportToCsv(r) {
   const rows = [["bus_id","bus","kv_ll","fault","sym_ka","peak_asym_ka","asym_rms_ka","x_over_r","ground_return_ka","z_eq_r_pu","z_eq_x_pu","notes"]];
