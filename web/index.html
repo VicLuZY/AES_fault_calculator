@@ -56,7 +56,7 @@
     }
     input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96,165,250,.12); }
     textarea { resize: vertical; }
-    .app { display: grid; grid-template-rows: 74px 1fr 210px; height: 100%; }
+    .app { display: grid; grid-template-rows: 70px 1fr 168px; height: 100%; }
     .topbar {
       display: grid; grid-template-columns: 300px 1fr 360px; gap: 12px; align-items: center;
       padding: 10px 12px; background: #202830; border-bottom: 1px solid #12181f; box-shadow: var(--shadow); z-index: 5;
@@ -80,13 +80,13 @@
     .status-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
     .status-pill.good .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
     .status-pill.bad .status-dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
-    .workspace { min-height: 0; display: grid; grid-template-columns: 340px 1fr 410px; }
+    .workspace { min-height: 0; display: grid; grid-template-columns: 280px minmax(800px, 1fr) 340px; }
     .left, .right { min-height: 0; overflow: auto; background: #edf2f6; border-right: 1px solid var(--line); }
     .right { border-right: 0; border-left: 1px solid var(--line); }
     .section { margin: 0; border-bottom: 1px solid var(--line); background: var(--panel); overflow: hidden; }
     .section h2 { margin: 0; padding: 9px 12px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #253241; background: #e6edf3; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
     .section-body { padding: 10px 12px; }
-    .insert-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .insert-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
     .insert-grid button { min-height: 54px; padding: 6px 4px; text-align: center; }
     .insert-grid b { display: block; font-size: 12px; letter-spacing: .08em; }
     .insert-grid span { display: block; color: var(--muted); font-size: 9px; margin-top: 3px; line-height: 1.1; }
@@ -114,11 +114,11 @@
     .canvas-wrap { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #dce5ec; }
     .canvas-frame { position: absolute; inset: 0; border: 0; overflow: hidden; background: linear-gradient(rgba(74,93,112,.13) 1px, transparent 1px), linear-gradient(90deg, rgba(74,93,112,.13) 1px, transparent 1px), #fbfdff; background-size: 28px 28px; }
     svg { width: 100%; height: 100%; display: block; }
-    .canvas-title { position: absolute; left: 12px; top: 12px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
+    .canvas-title { position: absolute; left: 12px; top: 10px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
     .legend { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
     .legend span { border: 1px solid var(--line); background: rgba(255,255,255,.92); border-radius: 3px; padding: 5px 7px; }
     .canvas-note { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px; color: #435265; font-size: 11px; pointer-events: none; }
-    .canvas-tools { position: absolute; left: 12px; top: 46px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
+    .canvas-tools { position: absolute; left: 12px; top: 42px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
     .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
     .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
     .tool-check input { width: auto; }
@@ -132,7 +132,7 @@
     .kpi .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
     .kpi .value { margin-top: 4px; font-size: 20px; font-weight: 800; }
     .kpi .subv { color: var(--muted); font-size: 11px; margin-top: 1px; }
-    .bottom { min-height: 0; display: grid; grid-template-columns: 1fr 390px; background: #edf2f6; border-top: 1px solid var(--line); }
+    .bottom { min-height: 0; display: grid; grid-template-columns: 1fr 340px; background: #edf2f6; border-top: 1px solid var(--line); }
     .results { overflow: auto; padding: 10px 12px; }
     .issue-log { overflow: auto; border-left: 1px solid var(--line); padding: 10px 12px; }
     .footer-heading { color: #344254; font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; margin-bottom: 7px; }
@@ -191,9 +191,9 @@
     }
     @media (min-width: 761px) and (max-width: 1180px) {
       body { overflow: auto; }
-      .app { min-width: 1060px; min-height: 100%; height: auto; grid-template-rows: auto 720px 240px; }
+      .app { min-width: 1060px; min-height: 100%; height: auto; grid-template-rows: auto 780px 220px; }
       .topbar { grid-template-columns: 1fr; }
-      .workspace { grid-template-columns: 310px 1fr 360px; }
+      .workspace { grid-template-columns: 280px 1fr 340px; }
     }
     @media (max-width: 760px) {
       body { overflow: auto; }
@@ -209,7 +209,7 @@
       .left, .right { overflow: visible; border: 0; border-bottom: 1px solid var(--line); }
       .insert-grid { grid-template-columns: 1fr 1fr; }
       .section-body, .results { overflow-x: auto; }
-      .canvas-wrap { height: 540px; min-height: 540px; }
+      .canvas-wrap { height: 680px; min-height: 680px; }
       .legend { left: 12px; right: 12px; top: 82px; flex-wrap: wrap; }
       .model-summary { grid-template-columns: 1fr 1fr; bottom: 54px; }
       .canvas-note { flex-direction: column; gap: 4px; font-size: 10px; }
@@ -299,8 +299,8 @@
     </aside>
 
     <section class="canvas-wrap">
-      <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable one-line diagram"></svg></div>
-      <div class="canvas-title"><span class="tag">one-line study model</span><span id="canvasSubtitle">snap-to-grid editable sequence network</span></div>
+      <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable conductor wiring diagram"></svg></div>
+      <div class="canvas-title"><span class="tag">conductor wiring diagram</span><span id="canvasSubtitle">snap-to-grid editable sequence network</span></div>
       <div class="canvas-tools">
         <button id="btnCanvasAddBus" class="small ghost">Add bus</button>
         <button id="btnCanvasAddFeeder" class="small ghost">Add feeder</button>
@@ -698,7 +698,7 @@ function autoLayoutPositions() {
   Object.keys(groups).map(Number).sort((a,b) => a-b).forEach(col => {
     const group = groups[col];
     group.forEach((id, row) => {
-      positions[id] = { x: 160 + col * 250, y: 260 + (row - (group.length - 1) / 2) * 145 };
+      positions[id] = { x: 220 + col * 340, y: 370 + (row - (group.length - 1) / 2) * 210 };
     });
   });
   return positions;
@@ -706,10 +706,10 @@ function autoLayoutPositions() {
 function nextBusPosition(fromId) {
   if (fromId && layout?.buses?.[fromId]) {
     const p = layout.buses[fromId];
-    return { x: snap(Number(p.x) + 250), y: snap(Number(p.y)) };
+    return { x: snap(Number(p.x) + 340), y: snap(Number(p.y)) };
   }
   const n = network?.buses?.length || 0;
-  return { x: 160 + n * 220, y: n % 2 ? 400 : 260 };
+  return { x: 220 + n * 300, y: n % 2 ? 480 : 320 };
 }
 function electricalCase() {
   const copy = JSON.parse(JSON.stringify(network || {}));
@@ -931,7 +931,7 @@ function renderConductors(br, points, flow) {
   const maxKa = flow?.maxKa || 0;
   const open = isOpen(br);
   const showLabels = selected.type === "branch" && selected.id === br.id;
-  const laneGap = Math.max(4.5, Math.min(7.5, 38 / lanes.length));
+  const laneGap = conductorLaneGap(lanes.length);
   const labelsAt = polylineMidpoint(points);
   return lanes.map((lane, i) => {
     const offset = (i - (lanes.length - 1) / 2) * laneGap;
@@ -958,6 +958,7 @@ function conductorLanes(br) {
     ...c.other.map((label, index) => ({ role:"other", label, index, angle: 0 }))
   ];
 }
+function conductorLaneGap(count) { return Math.max(6.5, Math.min(10, 58 / Math.max(count, 1))); }
 function offsetPolyline(points, offset) {
   if (!offset || points.length < 2) return points;
   return points.map((p, i) => {
@@ -1037,26 +1038,61 @@ function stateLabel(v) {
   return "closed";
 }
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
+function busConductorLanes(busId) {
+  const byRole = { phase:[], neutral:[], ground:[], bond:[], other:[] };
+  for (const br of network.branches.filter(b => b.from === busId || b.to === busId)) {
+    for (const lane of conductorLanes(br)) {
+      if (!byRole[lane.role].some(existing => existing.label === lane.label)) byRole[lane.role].push(lane);
+    }
+  }
+  const lanes = [...byRole.phase, ...byRole.neutral, ...byRole.ground, ...byRole.bond, ...byRole.other];
+  return lanes.length ? lanes : conductorLanes({ kind:"feeder", conductors:defaultConductorSet({kind:"feeder"}) });
+}
+function busBundleMetrics(lanes) {
+  const gap = conductorLaneGap(lanes.length);
+  return { gap, height: Math.max(34, (lanes.length - 1) * gap + 18), width: 190 };
+}
+function busLaneOffset(index, count) { return (index - (count - 1) / 2) * conductorLaneGap(count); }
 function renderSource(s, flow) {
-  const p = busPos(s.bus); const sx = p.x, sy = p.y - 92; const sel = selected.type === "source" && selected.id === s.id;
+  const p = busPos(s.bus); const sx = p.x, sy = p.y - 142; const sel = selected.type === "source" && selected.id === s.id;
   const label = s.kind === "motor" ? "MTR" : s.kind === "generator" ? "GEN" : s.kind === "inverter" ? "INV" : "UTIL";
   const symbol = s.kind === "utility" || s.kind === "grid"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-25}" y="${sy-14}" width="50" height="28" rx="0"/>`
     : `<circle class="source-symbol ${sel ? "source-selected" : ""}" cx="${sx}" cy="${sy}" r="19"/>`;
   const sourceFlow = flow?.sources?.[s.id];
+  const lanes = busConductorLanes(s.bus);
+  const busMetrics = busBundleMetrics(lanes);
   const active = sourceFlow?.ka > 0.001 && !isOpen(s);
-  const width = active ? faultStrokeWidth(sourceFlow.ka, flow.maxKa) : 2.2;
-  const classes = `branch-line ${active ? "fault-flow" : ""} ${animateFaultFlow ? "" : "paused"}`;
+  const sourceDrop = lanes.map((lane, i) => {
+    const x = sx + busLaneOffset(i, lanes.length);
+    const activeKa = active ? sourceFlow.ka * groundRoleFactor(lane, flow?.fault) : 0;
+    const isActiveLane = activeKa > 0.001;
+    const width = isActiveLane ? faultStrokeWidth(activeKa, flow.maxKa) : conductorBaseWidth(lane.role);
+    const classes = `conductor-lane conductor-${lane.role} ${isActiveLane ? "fault-flow" : ""} ${animateFaultFlow ? "" : "paused"}`;
+    const startY = p.y - busMetrics.height / 2 - 8;
+    const endY = sy + 20;
+    const marker = isActiveLane ? ` marker-end="url(#faultArrow)"` : "";
+    return `<path class="${classes}" d="M${fmt(x,1)} ${fmt(startY,1)} L${fmt(x,1)} ${fmt(endY,1)}" style="stroke-width:${fmt(width,2)};--flow-speed:1.1s"${marker}/>`;
+  }).join("");
   const flowLabel = active ? `<text class="svg-small" x="${sx}" y="${sy+35}" text-anchor="middle">${fmtKA(sourceFlow.ka)} kA</text>` : "";
-  return `<g onclick="selectItem('source','${s.id}')"><line class="${classes}" x1="${p.x}" y1="${p.y-4}" x2="${sx}" y2="${sy+18}" style="stroke-width:${fmt(width,2)};--flow-speed:1.1s"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-28}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${flowLabel}</g>`;
+  return `<g onclick="selectItem('source','${s.id}')">${sourceDrop}${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-28}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${flowLabel}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
   const sel = selected.type === "bus" && selected.id === b.id;
   const r = busReport(b.id);
-  const chip = r ? `<rect class="fault-chip" x="${p.x-62}" y="${p.y+30}" width="124" height="18"/><text class="fault-chip-text" x="${p.x}" y="${p.y+43}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
-  const selection = sel ? `<rect class="bus-selection" x="${p.x-82}" y="${p.y-34}" width="164" height="72"/>` : "";
-  return `<g data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${p.x-86}" y="${p.y-38}" width="172" height="82"/><line class="busbar" x1="${p.x-64}" y1="${p.y}" x2="${p.x+64}" y2="${p.y}"/><line class="bus-tick" x1="${p.x-64}" y1="${p.y-10}" x2="${p.x-64}" y2="${p.y+10}"/><line class="bus-tick" x1="${p.x+64}" y1="${p.y-10}" x2="${p.x+64}" y2="${p.y+10}"/><text class="svg-label" x="${p.x}" y="${p.y-16}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><text class="svg-small" x="${p.x}" y="${p.y+20}" text-anchor="middle">${fmt(b.kv_ll, 3)} kV</text>${chip}${selection}</g>`;
+  const lanes = busConductorLanes(b.id);
+  const metrics = busBundleMetrics(lanes);
+  const x1 = p.x - metrics.width / 2, x2 = p.x + metrics.width / 2;
+  const wires = lanes.map((lane, i) => {
+    const y = p.y + busLaneOffset(i, lanes.length);
+    const label = sel ? `<text class="conductor-label" x="${x1 - 9}" y="${y + 3}" text-anchor="end">${escapeHtml(lane.label)}</text>` : "";
+    return `<line class="conductor-lane conductor-${lane.role}" x1="${fmt(x1,1)}" y1="${fmt(y,1)}" x2="${fmt(x2,1)}" y2="${fmt(y,1)}"/><line class="bus-tick" x1="${fmt(x1,1)}" y1="${fmt(y-5,1)}" x2="${fmt(x1,1)}" y2="${fmt(y+5,1)}"/><line class="bus-tick" x1="${fmt(x2,1)}" y1="${fmt(y-5,1)}" x2="${fmt(x2,1)}" y2="${fmt(y+5,1)}"/>${label}`;
+  }).join("");
+  const top = p.y - metrics.height / 2, bottom = p.y + metrics.height / 2;
+  const chip = r ? `<rect class="fault-chip" x="${p.x-72}" y="${bottom+24}" width="144" height="18"/><text class="fault-chip-text" x="${p.x}" y="${bottom+37}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
+  const selection = sel ? `<rect class="bus-selection" x="${x1-18}" y="${top-30}" width="${metrics.width+36}" height="${metrics.height+76}"/>` : "";
+  return `<g data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${x1-24}" y="${top-34}" width="${metrics.width+48}" height="${metrics.height+92}"/><text class="svg-label" x="${p.x}" y="${top-16}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text>${wires}<text class="svg-small" x="${p.x}" y="${bottom+15}" text-anchor="middle">${fmt(b.kv_ll, 3)} kV</text>${chip}${selection}</g>`;
 }
 function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
 function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
@@ -1178,8 +1214,8 @@ function fitCanvas() {
   if (!network.buses.length) { canvasView = { x:0, y:0, w:1100, h:620 }; return; }
   ensureLayout();
   const xs = network.buses.map(b => num(layout.buses[b.id]?.x)), ys = network.buses.map(b => num(layout.buses[b.id]?.y));
-  const minX = Math.min(...xs) - 180, maxX = Math.max(...xs) + 180, minY = Math.min(...ys) - 230, maxY = Math.max(...ys) + 180;
-  canvasView = { x:minX, y:minY, w:Math.max(420, maxX-minX), h:Math.max(260, maxY-minY) };
+  const minX = Math.min(...xs) - 240, maxX = Math.max(...xs) + 240, minY = Math.min(...ys) - 300, maxY = Math.max(...ys) + 240;
+  canvasView = { x:minX, y:minY, w:Math.max(720, maxX-minX), h:Math.max(500, maxY-minY) };
 }
 
 function renderResults() {
@@ -1318,7 +1354,7 @@ function addFeederToNewBus() {
   network.buses.push({ id: to, name: `Bus ${network.buses.length+1}`, kv_ll: fromBus.kv_ll || DEFAULT_SECONDARY_KV });
   ensureLayout();
   const p = busPos(from);
-  layout.buses[to] = { x: snap(p.x + 250), y: snap(p.y + (network.buses.length % 2 ? 115 : -115)) };
+  layout.buses[to] = { x: snap(p.x + 340), y: snap(p.y + (network.buses.length % 2 ? 170 : -170)) };
   const id = nextId("fdr", network.branches);
   network.branches.push(branchWithMetadata({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }));
   layout.routeModes[id] = "orthogonal";
@@ -1342,8 +1378,8 @@ function addMainTieMain() {
   network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:DEFAULT_SECONDARY_KV });
   ensureLayout();
   const y = 390 + network.buses.length * 12;
-  layout.buses[a] = { x:260, y };
-  layout.buses[b] = { x:620, y };
+  layout.buses[a] = { x:280, y };
+  layout.buses[b] = { x:780, y };
   const tie = nextId("tie", network.branches);
   network.branches.push(branchWithMetadata({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 }));
   layout.routeModes[tie] = "orthogonal";

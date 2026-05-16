@@ -9,10 +9,10 @@ This is a professional seed implementation, not a sealed engineering product. It
 - Rust calculation core in `crates/faultcalc-core`
 - Native CLI in `crates/faultcalc-cli`
 - Direct Rust WebAssembly module in `crates/faultcalc-wasm`
-- Professional one-line editor GUI in `web/index.template.html`
+- Professional conductor-level wiring editor GUI in `web/index.template.html`
 - External-WASM browser entry at `web/index.html`
 - Standalone HTML generation workflow that embeds `faultcalc.wasm`
-- Zoomable/pannable one-line canvas with snap-to-grid bus dragging, orthogonal branch routing, switch/breaker/tie symbols, equipment schedules, duty comparison, and print-friendly HTML reports
+- Zoomable/pannable conductor wiring canvas with snap-to-grid bus dragging, orthogonal branch routing, switch/breaker/tie symbols, equipment schedules, duty comparison, and print-friendly HTML reports
 - Programmatic case model using JSON
 - Sample case in `cases/sample.json`
 - JSON and CSV report export
