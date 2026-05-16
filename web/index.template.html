@@ -248,12 +248,9 @@
 
   <main class="workspace">
     <aside class="left">
-      <section class="section"><h2>Insert equipment</h2><div class="section-body insert-grid">
-        <button id="btnAddBus"><b>BUS</b><span>Switchgear / MCC / panel</span></button>
-        <button id="btnAddFeeder"><b>COND</b><span>Conductor</span></button>
-        <button id="btnAddTransformer"><b>XFMR</b><span>Transformer</span></button>
-        <button id="btnAddLoad"><b>LOAD</b><span>Single terminal</span></button>
+      <section class="section"><h2>Diagram controls</h2><div class="section-body insert-grid">
         <button id="btnAutoLayout"><b>AUTO</b><span>Arrange buses</span></button>
+        <button id="btnResetCase" class="danger"><b>RESET</b><span>Starter utility</span></button>
       </div></section>
 
       <section class="section"><h2>Study settings</h2><div class="section-body">
@@ -288,8 +285,6 @@
       <div id="connectionMenu" class="add-menu hidden"></div>
       <div class="canvas-title"><span class="tag">single-line diagram</span><span id="canvasSubtitle">hover terminals to add connections</span></div>
       <div class="canvas-tools">
-        <button id="btnCanvasAddBus" class="small ghost">Add bus</button>
-        <button id="btnCanvasAddFeeder" class="small ghost">Add conductor</button>
         <button id="btnDeleteSelected" class="small danger">Delete</button>
         <span class="tool-sep" aria-hidden="true"></span>
         <button id="btnZoomOut" class="small ghost">-</button>
@@ -461,6 +456,7 @@ function faultcalcSample() { return wasmNoArgCall("faultcalc_sample"); }
 function faultcalcVersion() { return wasmNoArgCall("faultcalc_version"); }
 
 function wireEvents() {
+  const on = (id, handler) => { const el = $(id); if (el) el.onclick = handler; };
   $("btnRun").onclick = runStudy;
   $("btnImport").onclick = () => $("fileInput").click();
   $("fileInput").onchange = importCase;
@@ -469,14 +465,9 @@ function wireEvents() {
   $("btnExportCsv").onclick = () => report && download("faultcalc-report.csv", reportToCsv(report), "text/csv");
   $("btnExportHtml").onclick = () => report && download("faultcalc-report.html", reportToHtml(), "text/html");
   $("btnPrintReport").onclick = printReport;
-  $("btnAddBus").onclick = addBus;
-  $("btnAddTransformer").onclick = addTransformer;
-  $("btnAddFeeder").onclick = addFeeder;
-  $("btnAddLoad").onclick = addLoad;
-  $("btnAutoLayout").onclick = () => { autoLayout(); layoutChanged(true); };
-  $("btnCanvasAddBus").onclick = addBus;
-  $("btnCanvasAddFeeder").onclick = addFeederToNewBus;
-  $("btnDeleteSelected").onclick = deleteSelected;
+  on("btnAutoLayout", () => { autoLayout(); layoutChanged(true); });
+  on("btnResetCase", () => resetModel());
+  on("btnDeleteSelected", deleteSelected);
   $("btnZoomIn").onclick = () => zoomAt(0.82);
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
@@ -890,6 +881,15 @@ function seriesInsertPositions(fromId, toId, slotCount) {
   if (deltaX) shiftBuses(downstream, deltaX, 0);
   return Array.from({ length:slotCount }, (_, i) => ({ x:snap(a.x + sign * gap * (i + 1)), y:snap(a.y) }));
 }
+function terminalSeriesPositions(fromId, terminal, slotCount) {
+  const a = busPos(fromId);
+  const direction = terminalDirection(terminal);
+  const gap = direction.x ? BUS_HORIZONTAL_SPACING : INSERT_SPACING;
+  return Array.from({ length:slotCount }, (_, i) => ({
+    x:snap(a.x + direction.x * gap * (i + 1)),
+    y:snap(a.y + direction.y * gap * (i + 1))
+  }));
+}
 function electricalCase() {
   const copy = JSON.parse(JSON.stringify(network || {}));
   (copy.buses || []).forEach(bus => { delete bus.x; delete bus.y; });
@@ -1234,7 +1234,7 @@ function showAddMenu(evt, type, id, terminal) {
   const busId = terminalBusId(type, id, terminal);
   const bus = network.buses.find(b => b.id === busId);
   if (!bus) return;
-  menu.innerHTML = `<div class="menu-title">${escapeHtml(bus.name || bus.id)} ${terminalName(terminal)}</div><button onclick="menuAddConnection('conductor','${jsArg(bus.id)}','${jsArg(terminal)}')">Add cable to new bus</button><button onclick="menuAddConnection('transformer','${jsArg(bus.id)}','${jsArg(terminal)}')">Add transformer to 600 V bus</button><button onclick="menuAddConnection('load','${jsArg(bus.id)}','${jsArg(terminal)}')">Add load terminal</button>`;
+  menu.innerHTML = `<div class="menu-title">${escapeHtml(bus.name || bus.id)} ${terminalName(terminal)}</div><button onclick="menuAddConnection('conductor','${jsArg(bus.id)}','${jsArg(terminal)}')">Add cable to new bus</button><button onclick="menuAddConnection('transformer','${jsArg(bus.id)}','${jsArg(terminal)}')">Add cable-fed transformer</button><button onclick="menuAddConnection('load','${jsArg(bus.id)}','${jsArg(terminal)}')">Add load terminal</button>`;
   menu.classList.remove("hidden");
 }
 function terminalName(terminal) {
@@ -1440,6 +1440,12 @@ function addLoad() { addLoadAtBus(selectedBusId()); }
 function conductorBranch(id, from, to, name="Conductor") {
   return branchWithMetadata({ id, kind:"feeder", name, from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 });
 }
+function transformerBranch(id, from, to, ratingKva=2500, impedancePercent=5.75) {
+  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
+  const branch = branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
+  syncTransformerDerivedValues(branch, false);
+  return branch;
+}
 function addConductorFromBus(from, terminal="bottom") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
@@ -1458,19 +1464,28 @@ function addConductorFromBus(from, terminal="bottom") {
 function addTransformerFromBus(from, terminal="bottom") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
-  const ratingKva = 2500;
-  const impedancePercent = 5.75;
-  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
-  const to = nextId("bus", network.buses);
-  network.buses.push({ id: to, name: `600 V Bus ${network.buses.length+1}`, kv_ll: DEFAULT_SECONDARY_KV });
   ensureLayout();
-  layout.buses[to] = nextBusPosition(from, terminal, to);
-  const id = nextId("tx", network.branches);
-  const branch = branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
-  syncTransformerDerivedValues(branch, false);
-  network.branches.push(branch);
-  layout.routeModes[id] = "orthogonal";
-  selectItem("branch", id);
+  const [primaryPos, secondaryPos, outputPos] = terminalSeriesPositions(from, terminal, 3);
+  const primaryBus = nextId("bus", network.buses);
+  network.buses.push({ id:primaryBus, name:`Transformer Primary ${network.buses.length+1}`, kv_ll:busVoltage(network, from) });
+  layout.buses[primaryBus] = primaryPos;
+  const secondaryBus = nextId("bus", network.buses);
+  network.buses.push({ id:secondaryBus, name:`Transformer Secondary ${network.buses.length+1}`, kv_ll:DEFAULT_SECONDARY_KV });
+  layout.buses[secondaryBus] = secondaryPos;
+  const outputBus = nextId("bus", network.buses);
+  network.buses.push({ id:outputBus, name:`600 V Bus ${network.buses.length+1}`, kv_ll:DEFAULT_SECONDARY_KV });
+  layout.buses[outputBus] = outputPos;
+  const inId = nextId("fdr", network.branches);
+  network.branches.push(conductorBranch(inId, from, primaryBus, "Transformer primary cable"));
+  layout.routeModes[inId] = "orthogonal";
+  const txId = nextId("tx", network.branches);
+  network.branches.push(transformerBranch(txId, primaryBus, secondaryBus));
+  layout.routeModes[txId] = "orthogonal";
+  const outId = nextId("fdr", network.branches);
+  network.branches.push(conductorBranch(outId, secondaryBus, outputBus, "Transformer secondary cable"));
+  layout.routeModes[outId] = "orthogonal";
+  syncConnectedBusVoltage(secondaryBus, DEFAULT_SECONDARY_KV);
+  selectItem("branch", txId);
   fitCanvas();
   modelChanged(true);
 }
@@ -1513,18 +1528,13 @@ function insertTransformerOnBranch(branchId) {
   network.buses.push({ id:primaryBus, name:`Transformer Primary ${network.buses.length+1}`, kv_ll:busVoltage(network, br.from) });
   layout.buses[primaryBus] = primaryPos;
   const secondaryBus = nextId("bus", network.buses);
-  network.buses.push({ id:secondaryBus, name:`600 V Bus ${network.buses.length+1}`, kv_ll:DEFAULT_SECONDARY_KV });
+  network.buses.push({ id:secondaryBus, name:`Transformer Secondary ${network.buses.length+1}`, kv_ll:DEFAULT_SECONDARY_KV });
   layout.buses[secondaryBus] = secondaryPos;
   br.to = primaryBus;
   delete layout.routes[br.id];
   layout.routeModes[br.id] = "orthogonal";
-  const ratingKva = 2500;
-  const impedancePercent = 5.75;
-  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
   const txId = nextId("tx", network.branches);
-  const transformer = branchWithMetadata({ id:txId, kind:"transformer", name:"Transformer", from:primaryBus, to:secondaryBus, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
-  syncTransformerDerivedValues(transformer, false);
-  network.branches.push(transformer);
+  network.branches.push(transformerBranch(txId, primaryBus, secondaryBus));
   layout.routeModes[txId] = "orthogonal";
   const outId = nextId("fdr", network.branches);
   network.branches.push(conductorBranch(outId, secondaryBus, oldTo));
@@ -1560,6 +1570,31 @@ function autoLayout() {
   layout.routes = {};
   layout.routeModes = Object.fromEntries(network.branches.map(br => [br.id, "orthogonal"]));
   fitCanvas();
+}
+function resetModel(skipConfirm=false) {
+  if (!skipConfirm && !window.confirm("Reset to the starter single-utility model? Local edits in this browser will be cleared.")) return;
+  hideAddMenu();
+  report = null;
+  dirty = false;
+  lastRunAt = null;
+  pendingLegacyLayout = null;
+  network = normalizeCase(fallbackSample());
+  layout = blankLayout();
+  ensureLayout();
+  fitCanvas();
+  selected = { type:"bus", id: network.buses[0]?.id || null };
+  currentTab = "buses";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab));
+  syncProjectInputs();
+  syncStudyInputs();
+  localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(electricalCase()));
+  localStorage.setItem(CASE_VERSION_KEY, ASSET_VERSION);
+  saveLayout();
+  refreshJson();
+  render();
+  updateCommandState();
+  $("saveState").textContent = "case reset to starter model";
+  if (wasmReady) runStudy();
 }
 
 async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); loadLayoutForCase(); fitCanvas(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
@@ -1599,7 +1634,7 @@ function fallbackSample() {
   };
 }
 
-window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch;
+window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch; window.resetModel = resetModel;
 boot();
 </script>
 </body>
