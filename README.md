@@ -9,10 +9,10 @@ This is a professional seed implementation, not a sealed engineering product. It
 - Rust calculation core in `crates/faultcalc-core`
 - Native CLI in `crates/faultcalc-cli`
 - Direct Rust WebAssembly module in `crates/faultcalc-wasm`
-- Professional conductor-level wiring editor GUI in `web/index.template.html`
+- Professional single-line diagram editor GUI in `web/index.template.html`
 - External-WASM browser entry at `web/index.html`
 - Standalone HTML generation workflow that embeds `faultcalc.wasm`
-- Zoomable/pannable conductor wiring canvas with snap-to-grid bus dragging, orthogonal branch routing, switch/breaker/tie symbols, equipment schedules, duty comparison, and print-friendly HTML reports
+- Zoomable/pannable SLD canvas with snap-to-grid bus dragging, orthogonal branch routing, terminal add menus, equipment schedules, duty comparison, and print-friendly HTML reports
 - Programmatic case model using JSON
 - Sample case in `cases/sample.json`
 - JSON and CSV report export
@@ -163,5 +163,5 @@ Before using this for issued work, Codex should extend the package with:
 ## Current limitations
 
 - Equipment duty comparison uses available symmetrical current against user-entered ampere ratings; it does not replace project-specific interrupting, withstand, momentary, or series-rating checks.
-- Conductor, transformer, motor, generator, and inverter builders are intentionally simple seed workflows unless project-licensed data is supplied.
+- Source, load, conductor, and transformer builders are intentionally simple seed workflows unless project-licensed data is supplied.
 - The HTML report includes the calculation method appendix and warnings, but PDF generation is performed through the browser print dialog.

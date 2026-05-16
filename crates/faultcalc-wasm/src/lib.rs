@@ -136,11 +136,11 @@ mod tests {
             assert_eq!(faultcalc_sample(), 1);
             let sample = output_string();
             let sample_value: Value = serde_json::from_str(&sample).unwrap();
-            assert_eq!(sample_value["project"]["name"], "AES sample short-circuit study");
+            assert_eq!(sample_value["project"]["name"], "AES simple SLD study");
 
             let response = calculate(&sample);
             assert_eq!(response["ok"], true);
-            assert_eq!(response["report"]["summary"]["bus_count"], 3);
+            assert_eq!(response["report"]["summary"]["bus_count"], 1);
             assert_eq!(response["report"]["buses"][0]["faults"].as_array().unwrap().len(), 4);
         }
     }

@@ -555,8 +555,9 @@ mod tests {
         let json = net.to_json_pretty().unwrap();
         let case_value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(case_value["buses"].as_array().unwrap().iter().all(|b| b.get("x").is_none() && b.get("y").is_none()));
-        assert!(case_value["branches"][0]["conductors"]["phases"].as_array().unwrap().len() == 3);
-        assert_eq!(case_value["branches"][0]["vector_shift_deg"], -30.0);
+        assert_eq!(case_value["buses"][0]["kv_ll"], 0.6);
+        assert_eq!(case_value["branches"].as_array().unwrap().len(), 0);
+        assert_eq!(case_value["sources"][0]["rating"], "infinite utility");
         let parsed = Network::from_json(&json).unwrap();
 
         assert_eq!(parsed.project.name, net.project.name);
@@ -566,7 +567,6 @@ mod tests {
         assert_close(parsed.base_mva, net.base_mva, 1e-12);
         assert_close(parsed.sources[0].z1_pu.r, net.sources[0].z1_pu.r, 1e-15);
         assert_close(parsed.sources[0].z1_pu.x, net.sources[0].z1_pu.x, 1e-15);
-        assert_close(parsed.branches[0].rating_a, net.branches[0].rating_a, 1e-12);
         assert_eq!(Network::from_json(&parsed.to_json_pretty().unwrap()).unwrap().buses.len(), net.buses.len());
     }
 

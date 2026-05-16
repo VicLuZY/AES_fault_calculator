@@ -1,10 +1,10 @@
 {
   "project": {
-    "name": "AES sample short-circuit study",
+    "name": "AES simple SLD study",
     "number": "SEED-001",
     "engineer": "Victor Lü",
     "revision": "A",
-    "description": "Illustrative utility-transformer-MSB-MCC topology for validating the Rust WASM workstation."
+    "description": "Single infinite utility starter model for the browser SLD workstation."
   },
   "base_mva": 100.0,
   "frequency_hz": 60.0,
@@ -16,151 +16,37 @@
   },
   "buses": [
     {
-      "id": "util_12k",
-      "name": "Utility 12.47 kV",
-      "kv_ll": 12.47
-    },
-    {
-      "id": "msb_600",
-      "name": "Main Switchboard",
-      "kv_ll": 0.6
-    },
-    {
-      "id": "mcc_600",
-      "name": "Mechanical MCC",
+      "id": "util_bus",
+      "name": "Utility bus",
       "kv_ll": 0.6
     }
   ],
-  "branches": [
-    {
-      "id": "tx_1",
-      "kind": "transformer",
-      "name": "2500 kVA transformer",
-      "from": "util_12k",
-      "to": "msb_600",
-      "conductors": {
-        "phases": [
-          "A",
-          "B",
-          "C"
-        ],
-        "neutral": [
-          "X0/N"
-        ],
-        "ground": [
-          "EGC"
-        ],
-        "bond": [
-          "BOND"
-        ]
-      },
-      "primary_connection": "delta",
-      "secondary_connection": "grounded_wye",
-      "vector_shift_deg": -30.0,
-      "z1_pu": {
-        "r": 0.3252691193458119,
-        "x": 2.276883835420683
-      },
-      "z2_pu": {
-        "r": 0.3252691193458119,
-        "x": 2.276883835420683
-      },
-      "z0_pu": {
-        "r": 0.3252691193458119,
-        "x": 2.276883835420683
-      },
-      "has_z0": true,
-      "enabled": true,
-      "rating_a": 2405.626121623441,
-      "notes": "2500 kVA, 5.75%Z"
-    },
-    {
-      "id": "fdr_mcc",
-      "kind": "feeder",
-      "name": "MSB to MCC feeder",
-      "from": "msb_600",
-      "to": "mcc_600",
-      "conductors": {
-        "phases": [
-          "A",
-          "B",
-          "C"
-        ],
-        "neutral": [
-          "N"
-        ],
-        "ground": [
-          "EGC"
-        ],
-        "bond": [
-          "BOND"
-        ]
-      },
-      "z1_pu": {
-        "r": 0.0008,
-        "x": 0.0023
-      },
-      "z2_pu": {
-        "r": 0.0008,
-        "x": 0.0023
-      },
-      "z0_pu": {
-        "r": 0.0024,
-        "x": 0.0069
-      },
-      "has_z0": true,
-      "enabled": true,
-      "rating_a": 800.0,
-      "length_m": 55.0,
-      "notes": "Illustrative per-unit feeder impedance on 100 MVA base."
-    }
-  ],
+  "branches": [],
   "sources": [
     {
-      "id": "src_utility",
+      "id": "src_inf",
       "kind": "utility",
-      "name": "Utility source equivalent",
-      "bus": "util_12k",
+      "name": "Infinite utility",
+      "bus": "util_bus",
       "z1_pu": {
-        "r": 0.019900743804199785,
-        "x": 0.19900743804199786
+        "r": 1e-6,
+        "x": 0.0001
       },
       "z2_pu": {
-        "r": 0.019900743804199785,
-        "x": 0.19900743804199786
+        "r": 1e-6,
+        "x": 0.0001
       },
       "z0_pu": {
-        "r": 0.019900743804199785,
-        "x": 0.19900743804199786
+        "r": 1e-6,
+        "x": 0.0001
       },
       "has_z0": true,
       "enabled": true,
-      "rating": "500 MVA, X/R 10.0"
-    },
-    {
-      "id": "mot_mcc",
-      "kind": "motor",
-      "name": "Aggregate motor contribution",
-      "bus": "mcc_600",
-      "z1_pu": {
-        "r": 18.0,
-        "x": 95.0
-      },
-      "z2_pu": {
-        "r": 18.0,
-        "x": 95.0
-      },
-      "z0_pu": {
-        "r": 25.0,
-        "x": 120.0
-      },
-      "has_z0": false,
-      "enabled": true,
-      "rating": "aggregate motor source",
-      "notes": "Replace with project-specific motor contribution data."
+      "rating": "infinite utility",
+      "notes": "Replace with project-specific utility source impedance before issued work."
     }
   ],
   "notes": [
-    "This sample is for software validation and workflow demonstration only."
+    "Starter case for a simple single-line diagram."
   ]
 }
