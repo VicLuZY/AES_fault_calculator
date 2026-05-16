@@ -1,0 +1,11 @@
+/target/
+/bin/
+/out/
+/dist/
+/output/
+/web/faultcalc.wasm
+/web/faultcalc_workstation.html
+ieee_faultcalc_rust_wasm.zip
+faultcalc_RUST_WASM_CODEX_GOAL.txt
+*.log
+.DS_Store

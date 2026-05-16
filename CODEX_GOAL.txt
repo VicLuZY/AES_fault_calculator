@@ -1,0 +1,203 @@
+/goal Build FaultCalc into a professional offline Rust + WebAssembly short-circuit workstation.
+
+Context
+You are continuing from the seed package `ieee_faultcalc_rust_wasm`. The user wants a serious, offline, portable fault-current calculator with a professional custom GUI that renders and modifies the system setup. The previous Go WASM prototype was intentionally replaced. The long-term direction is Rust for the engineering calculation core, native CLI, browser WASM, and durable testability.
+
+Primary outcome
+Deliver a production-quality offline workstation that can:
+1. Model an electrical distribution system programmatically and graphically.
+2. Calculate available fault current at every bus.
+3. Support 3PH, SLG, LL, and DLG faults using sequence networks.
+4. Run as a native CLI and as a browser-based Rust WASM app.
+5. Open without internet access.
+6. Export auditable JSON and CSV reports.
+7. Keep the engineering method explicit, testable, and extendable.
+
+Current package structure
+- `crates/faultcalc-core`: case model, validation, solver, report export.
+- `crates/faultcalc-cli`: native CLI, local file server, standalone HTML embedding tool.
+- `crates/faultcalc-wasm`: direct Rust WASM ABI without wasm-bindgen.
+- `web/index.template.html`: professional custom GUI template.
+- `web/index.html`: development GUI that fetches `faultcalc.wasm` when served.
+- `cases/sample.json`: sample electrical system.
+- `docs/calculation-method.md`: current method notes.
+
+First build commands
+Run these first and fix any compile or lint issues before adding features:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo test --workspace
+cargo build -p faultcalc-cli --release
+mkdir -p bin
+cp target/release/faultcalc bin/faultcalc
+cargo build -p faultcalc-wasm --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/faultcalc_wasm.wasm web/faultcalc.wasm
+bin/faultcalc embed-wasm web/index.template.html web/faultcalc.wasm web/faultcalc_workstation.html
+bin/faultcalc calc cases/sample.json --json out/report.json --csv out/report.csv
+```
+
+Do not introduce Python as a runtime dependency. Python may be used only for one-off local developer scripting if absolutely necessary, but the final product must be Rust plus browser assets.
+
+Design principles
+- Keep the calculation engine independent from the GUI.
+- Make unit conversions explicit and test-covered.
+- Never bury engineering assumptions inside the UI.
+- Treat every calculation result as auditable data.
+- Prefer deterministic, typed structures over ad hoc maps.
+- Keep the app offline-first and portable.
+- Do not require a cloud service, database, or telemetry.
+- Do not embed copyrighted IEEE, ANSI, NEMA, or manufacturer tables unless the user supplies licensed data.
+- When exact standard tables are needed, create a data-loader interface and document the required source, version, and licence boundary.
+
+Immediate tasks
+1. Compile the current Rust project and fix all build errors.
+2. Verify `cargo test --workspace` passes.
+3. Verify the WASM target builds and the GUI can call the Rust exports.
+4. Generate `web/faultcalc_workstation.html` and verify it opens offline from disk.
+5. Run the CLI calculation on `cases/sample.json` and compare CLI output with WASM output.
+6. Add regression tests for all four fault types at all sample buses.
+7. Add a solver test for a simple one-source one-branch system with a hand-checkable Thevenin impedance.
+8. Add a zero-sequence-open test confirming SLG and DLG warnings are generated.
+
+GUI requirements
+The GUI must feel like a professional engineering workstation, not a generic form editor.
+
+Required GUI capabilities:
+- Render a custom one-line diagram with buses, transformers, feeders, sources, and motor/generator contribution symbols.
+- Drag buses to reposition them.
+- Select buses, branches, and sources from either the diagram or navigator.
+- Edit system base, frequency, prefault voltage, and fault impedance.
+- Edit project metadata.
+- Add and delete buses, utility sources, transformers, feeders, motors, and generators.
+- Display calculated duty badges directly on the one-line diagram.
+- Display result KPIs, including max 3PH and max SLG fault current.
+- Display a detailed results table with 3PH, SLG, LL, and DLG per bus.
+- Import/export case JSON.
+- Export report JSON and CSV.
+- Show warnings and validation issues clearly.
+- Preserve edits in browser local storage.
+
+GUI refinement tasks:
+- Add zoom and pan to the one-line canvas.
+- Add snap-to-grid and orthogonal routing for branches.
+- Add transformer symbols that visually indicate delta/wye and grounding.
+- Add switch and breaker symbols with selectable normally-open/normally-closed states.
+- Add bus tie equipment and main-tie-main visual templates.
+- Add a branch route editor so long feeders can avoid overlapping equipment.
+- Add an equipment schedule panel.
+- Add a comparison panel for equipment interrupting ratings.
+- Add a print/PDF-friendly report view.
+
+Engineering extension tasks
+Add typed equipment builder functions in `faultcalc-core`:
+- Utility source from short-circuit MVA and X/R.
+- Transformer from kVA, voltage, %Z, X/R, winding connection, grounding, and zero-sequence path rules.
+- Cable/feeder from conductor library, length, raceway, temperature, material, and parallel sets.
+- Motor contribution from horsepower/kW, voltage, code letter or subtransient reactance, and decay option.
+- Synchronous generator from Xd'', Xd', Xd, grounding, and decrement model.
+- Inverter-based source contribution with configurable current-limited behaviour.
+
+Add transformer connection modelling:
+- grounded wye-grounded wye
+- delta-grounded wye
+- grounded wye-delta
+- delta-delta
+- grounding transformer templates
+- zero-sequence blocking and return path rules
+- phase shift metadata for reporting
+
+Add bus and branch state modelling:
+- normally closed
+- normally open
+- maintenance open
+- fault-study scenario open/closed override
+- tie breaker state
+- source state
+- emergency generator parallel/no-parallel state
+
+Add scenario support:
+- normal utility
+- generator-only
+- utility plus generator parallel
+- main-main
+- main-tie-main with tie open
+- main-tie-main with tie closed
+- one source out of service
+- maintenance bypass condition
+
+Add reporting:
+- JSON report remains canonical.
+- CSV schedule exports remain simple and spreadsheet-friendly.
+- Add HTML report export.
+- Add equipment duty comparison table.
+- Add assumptions and limitations section.
+- Add a method appendix that lists equations and base conversions.
+- Add warnings for missing zero-sequence data, missing X/R, missing equipment rating, and questionable voltage bases.
+
+Validation and testing
+Do not treat visual success as calculation correctness. Build tests from the inside out.
+
+Required tests:
+- Complex arithmetic unit tests.
+- Per-unit base conversion tests.
+- Matrix solver tests.
+- Sequence network driving-point impedance tests.
+- Fault formula tests for 3PH, SLG, LL, DLG.
+- Sample case snapshot tests.
+- CLI vs WASM parity tests.
+- JSON import/export round-trip tests.
+- Disabled branch/source tests.
+- Zero-sequence path absent tests.
+- Fault impedance non-zero tests.
+
+Use tolerances explicitly. Document expected values and how they were derived.
+
+WASM ABI contract
+The seed uses a direct ABI instead of wasm-bindgen:
+- `faultcalc_alloc(len) -> ptr`
+- `faultcalc_free(ptr, len)`
+- `faultcalc_calculate(ptr, len) -> i32`
+- `faultcalc_sample() -> i32`
+- `faultcalc_version() -> i32`
+- `faultcalc_output_ptr() -> ptr`
+- `faultcalc_output_len() -> len`
+
+Keep this ABI stable unless there is a compelling reason to adopt wasm-bindgen. The direct ABI keeps the offline bundle simple and avoids JavaScript glue dependencies.
+
+Packaging requirements
+The final portable package should include:
+- Source code.
+- Native CLI build instructions for macOS, Windows, and Linux.
+- WASM build instructions.
+- Generated `faultcalc.wasm`.
+- Generated standalone `faultcalc_workstation.html`.
+- Sample cases.
+- Tests.
+- Documentation.
+- Known limitations.
+
+Suggested release command
+Create a repeatable release script or Makefile target that does:
+
+```bash
+cargo test --workspace
+cargo build -p faultcalc-cli --release
+cargo build -p faultcalc-wasm --release --target wasm32-unknown-unknown
+mkdir -p dist/faultcalc
+cp target/release/faultcalc dist/faultcalc/
+cp target/wasm32-unknown-unknown/release/faultcalc_wasm.wasm web/faultcalc.wasm
+./dist/faultcalc/faultcalc embed-wasm web/index.template.html web/faultcalc.wasm web/faultcalc_workstation.html
+cp -R web cases docs README.md CODEX_GOAL.txt dist/faultcalc/
+zip -r dist/faultcalc-rust-wasm.zip dist/faultcalc
+```
+
+Definition of done for the next milestone
+- `cargo test --workspace` passes.
+- Native CLI calculates sample case.
+- Rust WASM calculates the same sample case in the browser.
+- Standalone HTML opens offline from disk.
+- GUI can add, modify, and delete equipment, then re-run the study.
+- JSON and CSV exports work.
+- README accurately documents build and limitations.
+- No internet access is required at runtime.

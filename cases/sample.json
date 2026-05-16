@@ -1,0 +1,137 @@
+{
+  "project": {
+    "name": "AES sample short-circuit study",
+    "number": "SEED-001",
+    "engineer": "Victor Lü",
+    "revision": "A",
+    "description": "Illustrative utility-transformer-MSB-MCC topology for validating the Rust WASM workstation."
+  },
+  "base_mva": 100.0,
+  "frequency_hz": 60.0,
+  "prefault_voltage_pu": 1.0,
+  "options": {
+    "fault_r_ohm": 0.0,
+    "fault_x_ohm": 0.0,
+    "duty_cycles": 0.5
+  },
+  "buses": [
+    {
+      "id": "util_12k",
+      "name": "Utility 12.47 kV",
+      "kv_ll": 12.47,
+      "x": 150.0,
+      "y": 245.0
+    },
+    {
+      "id": "msb_480",
+      "name": "Main Switchboard",
+      "kv_ll": 0.48,
+      "x": 445.0,
+      "y": 245.0
+    },
+    {
+      "id": "mcc_480",
+      "name": "Mechanical MCC",
+      "kv_ll": 0.48,
+      "x": 745.0,
+      "y": 245.0
+    }
+  ],
+  "branches": [
+    {
+      "id": "tx_1",
+      "kind": "transformer",
+      "name": "2500 kVA transformer",
+      "from": "util_12k",
+      "to": "msb_480",
+      "z1_pu": {
+        "r": 0.3252691193458119,
+        "x": 2.276883835420683
+      },
+      "z2_pu": {
+        "r": 0.3252691193458119,
+        "x": 2.276883835420683
+      },
+      "z0_pu": {
+        "r": 0.3252691193458119,
+        "x": 2.276883835420683
+      },
+      "has_z0": true,
+      "enabled": true,
+      "rating_a": 3007.032652029301,
+      "notes": "2500 kVA, 5.75%Z"
+    },
+    {
+      "id": "fdr_mcc",
+      "kind": "feeder",
+      "name": "MSB to MCC feeder",
+      "from": "msb_480",
+      "to": "mcc_480",
+      "z1_pu": {
+        "r": 0.0008,
+        "x": 0.0023
+      },
+      "z2_pu": {
+        "r": 0.0008,
+        "x": 0.0023
+      },
+      "z0_pu": {
+        "r": 0.0024,
+        "x": 0.0069
+      },
+      "has_z0": true,
+      "enabled": true,
+      "rating_a": 800.0,
+      "length_m": 55.0,
+      "notes": "Illustrative per-unit feeder impedance on 100 MVA base."
+    }
+  ],
+  "sources": [
+    {
+      "id": "src_utility",
+      "kind": "utility",
+      "name": "Utility source equivalent",
+      "bus": "util_12k",
+      "z1_pu": {
+        "r": 0.019900743804199785,
+        "x": 0.19900743804199786
+      },
+      "z2_pu": {
+        "r": 0.019900743804199785,
+        "x": 0.19900743804199786
+      },
+      "z0_pu": {
+        "r": 0.019900743804199785,
+        "x": 0.19900743804199786
+      },
+      "has_z0": true,
+      "enabled": true,
+      "rating": "500 MVA, X/R 10.0"
+    },
+    {
+      "id": "mot_mcc",
+      "kind": "motor",
+      "name": "Aggregate motor contribution",
+      "bus": "mcc_480",
+      "z1_pu": {
+        "r": 18.0,
+        "x": 95.0
+      },
+      "z2_pu": {
+        "r": 18.0,
+        "x": 95.0
+      },
+      "z0_pu": {
+        "r": 25.0,
+        "x": 120.0
+      },
+      "has_z0": false,
+      "enabled": true,
+      "rating": "aggregate motor source",
+      "notes": "Replace with project-specific motor contribution data."
+    }
+  ],
+  "notes": [
+    "This sample is for software validation and workflow demonstration only."
+  ]
+}

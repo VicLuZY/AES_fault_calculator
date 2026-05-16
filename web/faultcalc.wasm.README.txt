@@ -1,0 +1,9 @@
+This package contains the Rust source and build pipeline for faultcalc.wasm.
+The sandbox used to assemble this package did not have a Rust toolchain, so the compiled WASM binary is not included.
+
+To generate it locally:
+
+rustup target add wasm32-unknown-unknown
+cargo build -p faultcalc-wasm --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/faultcalc_wasm.wasm web/faultcalc.wasm
+cargo run -p faultcalc-cli -- embed-wasm web/index.template.html web/faultcalc.wasm web/faultcalc_workstation.html

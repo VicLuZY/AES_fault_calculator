@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2311161c'/%3E%3Cpath d='M14 24h36M14 32h36M14 40h36' stroke='%23fbbf24' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <title>FaultCalc Rust WASM Workstation</title>
+  <style>
+    :root {
+      --bg: #080b10;
+      --bg2: #12161d;
+      --panel: #11161c;
+      --panel2: #17202a;
+      --panel3: #202832;
+      --ink: #e8edf7;
+      --muted: #94a3b8;
+      --line: #33404b;
+      --line2: #4b5964;
+      --blue: #60a5fa;
+      --cyan: #67e8f9;
+      --gold: #fbbf24;
+      --green: #86efac;
+      --red: #fb7185;
+      --copper: #d97706;
+      --input: #090f15;
+      --shadow: 0 20px 55px rgba(0,0,0,.35);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: linear-gradient(160deg, #06080c 0%, #0b1016 56%, #050607 100%);
+      color: var(--ink);
+      overflow: hidden;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #1f2937, #111827);
+      color: var(--ink);
+      padding: 8px 11px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform .08s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover { border-color: var(--blue); transform: translateY(-1px); }
+    button.primary { background: linear-gradient(180deg, #2563eb, #1d4ed8); border-color: #93c5fd; }
+    button.ghost { background: rgba(15,23,42,.65); }
+    button.danger:hover { border-color: var(--red); color: #fecdd3; }
+    button.small { padding: 5px 8px; border-radius: 8px; font-size: 12px; }
+    input, select, textarea {
+      width: 100%; color: var(--ink); background: var(--input); border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96,165,250,.12); }
+    textarea { resize: vertical; }
+    .app { display: grid; grid-template-rows: 62px 1fr 190px; height: 100%; }
+    .topbar {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+      padding: 9px 14px; background: rgba(7, 16, 31, .92); border-bottom: 1px solid rgba(148,163,184,.25); box-shadow: var(--shadow); z-index: 5;
+      backdrop-filter: blur(14px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 310px; }
+    .mark {
+      width: 38px; height: 38px; border-radius: 12px;
+      background: linear-gradient(145deg, #0f172a, #1d4ed8 55%, #67e8f9);
+      box-shadow: inset 0 0 18px rgba(255,255,255,.12), 0 0 25px rgba(96,165,250,.16);
+      position: relative;
+    }
+    .mark:after { content: ""; position: absolute; left: 8px; right: 8px; top: 18px; height: 3px; background: #fbbf24; box-shadow: 0 -7px 0 rgba(251,191,36,.65), 0 7px 0 rgba(251,191,36,.45); border-radius: 9px; }
+    .brand h1 { margin: 0; font-size: 16px; letter-spacing: .03em; }
+    .brand .sub { color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .project-strip { display: grid; grid-template-columns: 1.7fr .8fr .8fr .7fr; gap: 8px; align-items: end; }
+    .bar-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .status-pill { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted); font-size: 12px; white-space: nowrap; background: rgba(15,23,42,.7); }
+    .status-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+    .status-pill.good .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
+    .status-pill.bad .status-dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
+    .workspace { min-height: 0; display: grid; grid-template-columns: 330px 1fr 390px; }
+    .left, .right { min-height: 0; overflow: auto; background: rgba(15,23,42,.85); border-right: 1px solid rgba(148,163,184,.22); }
+    .right { border-right: 0; border-left: 1px solid rgba(148,163,184,.22); }
+    .section { margin: 12px; border: 1px solid rgba(148,163,184,.20); background: rgba(17,24,39,.86); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+    .section h2 { margin: 0; padding: 10px 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #cbd5e1; background: linear-gradient(180deg, rgba(51,65,85,.72), rgba(30,41,59,.56)); border-bottom: 1px solid rgba(148,163,184,.18); display: flex; justify-content: space-between; align-items: center; }
+    .section-body { padding: 12px; }
+	    .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .palette button { text-align: left; min-height: 50px; }
+    .palette b { display: block; font-size: 13px; }
+    .palette span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 8px; border-bottom: 1px solid rgba(148,163,184,.18); }
+    .tab.active { border-color: var(--blue); color: #bfdbfe; background: rgba(37,99,235,.18); }
+    .field { margin-bottom: 10px; }
+    .field label { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+    .field label .unit { color: #64748b; text-transform: none; letter-spacing: 0; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .list { display: flex; flex-direction: column; gap: 7px; }
+    .list-item { border: 1px solid var(--line); background: rgba(8,17,31,.72); border-radius: 12px; padding: 9px; cursor: pointer; position: relative; }
+    .list-item:hover, .list-item.selected { border-color: var(--blue); background: rgba(15,23,42,.92); }
+    .list-item.selected:before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; background: var(--gold); border-radius: 99px; }
+    .item-title { font-weight: 750; font-size: 13px; }
+    .item-sub { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .tag { display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1; background: rgba(51,65,85,.55); border: 1px solid rgba(148,163,184,.2); padding: 2px 6px; border-radius: 999px; font-size: 10px; margin-right: 4px; }
+    .canvas-wrap { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #070c12; }
+    .canvas-frame { position: absolute; inset: 12px; border: 1px solid rgba(148,163,184,.26); border-radius: 20px; overflow: hidden; background: linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px), rgba(4,10,20,.72); background-size: 28px 28px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03); }
+    svg { width: 100%; height: 100%; display: block; }
+    .canvas-title { position: absolute; left: 24px; top: 22px; display: flex; gap: 8px; align-items: center; color: #cbd5e1; font-size: 12px; z-index: 2; }
+    .legend { position: absolute; right: 24px; top: 22px; display: flex; gap: 8px; font-size: 11px; color: var(--muted); z-index: 2; }
+    .legend span { border: 1px solid rgba(148,163,184,.22); background: rgba(15,23,42,.82); border-radius: 999px; padding: 5px 8px; }
+    .canvas-note { position: absolute; left: 24px; bottom: 22px; right: 24px; display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
+    .canvas-tools { position: absolute; left: 24px; top: 56px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+    .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid rgba(148,163,184,.22); background: rgba(15,23,42,.82); border-radius: 999px; padding: 5px 8px; }
+    .tool-check input { width: auto; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+    .kpi { border: 1px solid rgba(148,163,184,.2); border-radius: 14px; padding: 10px; background: rgba(8,17,31,.65); }
+    .kpi .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+    .kpi .value { margin-top: 4px; font-size: 20px; font-weight: 800; }
+    .kpi .subv { color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .bottom { min-height: 0; display: grid; grid-template-columns: 1fr 380px; background: rgba(7,16,31,.94); border-top: 1px solid rgba(148,163,184,.22); }
+    .results { overflow: auto; padding: 10px 12px; }
+    .issue-log { overflow: auto; border-left: 1px solid rgba(148,163,184,.22); padding: 10px 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid rgba(148,163,184,.15); padding: 7px 8px; text-align: left; white-space: nowrap; }
+    th { color: #cbd5e1; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: rgba(30,41,59,.75); position: sticky; top: 0; z-index: 2; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .warn, .ok, .bad { border-radius: 12px; padding: 9px 10px; font-size: 12px; margin-bottom: 7px; line-height: 1.35; }
+    .warn { border: 1px solid rgba(251,191,36,.45); background: rgba(251,191,36,.10); color: #fde68a; }
+    .ok { border: 1px solid rgba(134,239,172,.36); background: rgba(134,239,172,.08); color: #bbf7d0; }
+    .bad { border: 1px solid rgba(251,113,133,.42); background: rgba(251,113,133,.08); color: #fecdd3; }
+    .inspector-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .inspector-title { font-weight: 800; }
+    .muted { color: var(--muted); }
+    .raw-json { min-height: 330px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; }
+    .hidden { display: none !important; }
+    .busbar { stroke: var(--copper); stroke-width: 8; stroke-linecap: round; }
+    .bus-card { fill: rgba(15,23,42,.96); stroke: #60a5fa; stroke-width: 1.6; rx: 14; filter: drop-shadow(0 10px 15px rgba(0,0,0,.25)); cursor: move; }
+    .bus-card.selected { stroke: var(--gold); stroke-width: 2.4; }
+    .svg-label { fill: #e5edf7; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
+    .svg-small { fill: #94a3b8; font-size: 10px; pointer-events: none; user-select: none; }
+    .branch-line { stroke: #93c5fd; stroke-width: 3.5; fill: none; }
+    .branch-line.feeder { stroke: #67e8f9; }
+    .branch-line.transformer { stroke: #c084fc; }
+    .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #fbbf24; }
+    .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
+    .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
+    .branch-selected { stroke: var(--gold); stroke-width: 6; }
+    .equip-symbol { fill: #07101f; stroke: #cbd5e1; stroke-width: 2; cursor: pointer; }
+    .equip-label { fill: #e5edf7; font-size: 9px; font-weight: 800; pointer-events: none; }
+    .source-symbol { fill: rgba(7,16,31,.94); stroke: #86efac; stroke-width: 2; cursor: pointer; }
+    .source-selected { stroke: var(--gold); stroke-width: 3; }
+    .fault-chip { fill: rgba(251,191,36,.16); stroke: rgba(251,191,36,.65); stroke-width: 1; rx: 7; }
+    .fault-chip-text { fill: #fde68a; font-size: 10px; font-weight: 800; pointer-events: none; }
+    .danger-text { fill: #fecdd3; }
+    .mini-table { font-size: 11px; }
+    .mini-table th, .mini-table td { padding: 5px 6px; }
+    .pass { color: #bbf7d0; }
+    .fail { color: #fecdd3; }
+    .route-tools { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+    @media print {
+      body { overflow: visible; background: #fff; color: #111827; }
+      .topbar, .left, .right, .canvas-wrap, .issue-log { display: none !important; }
+      .app { display: block; height: auto; }
+      .bottom { display: block; border: 0; background: #fff; }
+      .results { overflow: visible; padding: 0; }
+      table { color: #111827; }
+      th { color: #111827; background: #e5e7eb; position: static; }
+      td, th { border-color: #d1d5db; }
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; border: 2px solid #0f172a; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div><h1>FaultCalc Rust WASM Workstation</h1><div class="sub">Offline engineering-grade short-circuit model editor</div></div>
+    </div>
+    <div class="project-strip">
+      <div class="field" style="margin:0"><label>Project</label><input id="projectName" placeholder="Project name"></div>
+      <div class="field" style="margin:0"><label>Number</label><input id="projectNumber" placeholder="Job no."></div>
+      <div class="field" style="margin:0"><label>Engineer</label><input id="projectEngineer" placeholder="Engineer"></div>
+      <div class="field" style="margin:0"><label>Revision</label><input id="projectRevision" placeholder="A"></div>
+    </div>
+    <div class="bar-actions">
+      <span id="wasmStatus" class="status-pill"><span class="status-dot"></span><span>Loading WASM</span></span>
+      <button class="ghost" id="btnImport">Import</button><input id="fileInput" type="file" accept=".json,application/json" class="hidden">
+      <button class="ghost" id="btnExportCase">Export case</button>
+      <button class="primary" id="btnRun">Run study</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="left">
+      <section class="section"><h2>Equipment palette</h2><div class="section-body palette">
+        <button id="btnAddBus"><b>Bus</b><span>Switchboard, panel, MCC</span></button>
+        <button id="btnAddUtility"><b>Utility</b><span>Source equivalent</span></button>
+        <button id="btnAddTransformer"><b>Transformer</b><span>Sequence branch</span></button>
+        <button id="btnAddFeeder"><b>Feeder</b><span>Cable or bus duct</span></button>
+        <button id="btnAddMotor"><b>Motor</b><span>Contribution source</span></button>
+        <button id="btnAddGenerator"><b>Generator</b><span>Synchronous source</span></button>
+        <button id="btnAddSwitch"><b>Switch</b><span>Open/closed branch</span></button>
+        <button id="btnAddBreaker"><b>Breaker</b><span>Interrupting device</span></button>
+        <button id="btnAddMainTieMain"><b>Main-tie-main</b><span>Template lineup</span></button>
+        <button id="btnAutoLayout"><b>Layout</b><span>Arrange one-line</span></button>
+      </div></section>
+
+      <section class="section"><h2>Study settings</h2><div class="section-body">
+        <div class="grid-3">
+          <div class="field"><label>Base <span class="unit">MVA</span></label><input id="baseMva" type="number" step="any"></div>
+          <div class="field"><label>Frequency <span class="unit">Hz</span></label><input id="frequencyHz" type="number" step="any"></div>
+          <div class="field"><label>Prefault <span class="unit">pu</span></label><input id="prefaultVoltage" type="number" step="any"></div>
+        </div>
+        <div class="grid-3">
+          <div class="field"><label>Fault R <span class="unit">ohm</span></label><input id="faultR" type="number" step="any"></div>
+          <div class="field"><label>Fault X <span class="unit">ohm</span></label><input id="faultX" type="number" step="any"></div>
+          <div class="field"><label>Duty <span class="unit">cycles</span></label><input id="dutyCycles" type="number" step="any"></div>
+        </div>
+        <div class="field"><label>Project Description</label><textarea id="projectDescription" rows="2"></textarea></div>
+      </div></section>
+
+      <section class="section"><h2>System navigator</h2>
+        <div class="tabs"><button class="tab active" data-tab="buses">Buses</button><button class="tab" data-tab="branches">Branches</button><button class="tab" data-tab="sources">Sources</button></div>
+        <div class="section-body"><div id="navigatorList" class="list"></div></div>
+      </section>
+    </aside>
+
+    <section class="canvas-wrap">
+      <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable one-line diagram"></svg></div>
+      <div class="canvas-title"><span class="tag">one-line editor</span><span id="canvasSubtitle">drag buses, inspect sequence data, then run Rust WASM study</span></div>
+      <div class="canvas-tools">
+        <button id="btnZoomOut" class="small ghost">-</button>
+        <button id="btnZoomIn" class="small ghost">+</button>
+        <button id="btnZoomFit" class="small ghost">Fit</button>
+        <label class="tool-check"><input id="snapGrid" type="checkbox" checked> Snap</label>
+      </div>
+      <div class="legend"><span>Gold badges: calculated bus duty</span><span>Click symbols to edit</span></div>
+      <div class="canvas-note"><span>Calculated values are engineering aids only. Validate with the applicable IEEE, ANSI, utility, and equipment data for issued work.</span><span id="saveState">local model ready</span></div>
+    </section>
+
+    <aside class="right">
+      <section class="section"><h2>Selection inspector</h2><div class="section-body" id="inspector"></div></section>
+      <section class="section"><h2>Equipment schedule</h2><div class="section-body"><table id="scheduleTable" class="mini-table"><thead><tr><th>Type</th><th>Name</th><th>Connection</th><th>Rating</th></tr></thead><tbody></tbody></table></div></section>
+      <section class="section"><h2>Duty comparison</h2><div class="section-body"><table id="dutyTable" class="mini-table"><thead><tr><th>Equipment</th><th class="num">Rating A</th><th class="num">Duty A</th><th>Status</th></tr></thead><tbody></tbody></table></div></section>
+      <section class="section"><h2>Case JSON</h2><div class="section-body">
+        <div class="grid-2"><button id="btnRefreshJson" class="small ghost">Refresh text</button><button id="btnApplyJson" class="small ghost">Apply text</button></div>
+        <div style="height:8px"></div>
+        <textarea id="rawJson" class="raw-json" spellcheck="false"></textarea>
+      </div></section>
+    </aside>
+  </main>
+
+  <footer class="bottom">
+    <section class="results">
+      <div class="kpi-row" id="kpiRow"></div>
+      <div style="height:10px"></div>
+      <table id="resultsTable"><thead><tr><th>Bus</th><th>kV</th><th>Fault</th><th class="num">Sym kA</th><th class="num">Peak kA</th><th class="num">Asym RMS kA</th><th class="num">X/R</th><th class="num">Ground kA</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section class="issue-log">
+      <div class="grid-2"><button id="btnExportReport" class="small ghost">Export report JSON</button><button id="btnExportCsv" class="small ghost">Export CSV</button></div>
+      <div style="height:8px"></div>
+      <div class="grid-2"><button id="btnExportHtml" class="small ghost">Export HTML</button><button id="btnPrintReport" class="small ghost">Print view</button></div>
+      <div style="height:10px"></div>
+      <div id="issueLog"></div>
+    </section>
+  </footer>
+</div>
+
+<script>
+const WASM_BASE64 = "";
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d=2) => (v === null || v === undefined || Number.isNaN(v)) ? "" : Number(v).toFixed(d);
+const fmtKA = (v) => v ? Number(v).toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : "0.00";
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+let network = null;
+let report = null;
+let wasmReady = false;
+let selected = { type: "bus", id: null };
+let currentTab = "buses";
+let drag = null;
+let pan = null;
+let snapGrid = true;
+const GRID = 28;
+let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
+
+async function boot() {
+  wireEvents();
+  await bootWasm();
+  if (wasmReady && typeof faultcalcSample === "function") {
+    const saved = localStorage.getItem("faultcalc-workstation-case");
+    network = saved ? JSON.parse(saved) : JSON.parse(faultcalcSample());
+  } else {
+    network = fallbackSample();
+  }
+  selected = { type: "bus", id: network.buses[0]?.id || null };
+  syncProjectInputs(); syncStudyInputs(); refreshJson(); render();
+  if (wasmReady) runStudy();
+}
+
+let wasmExports = null;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+async function bootWasm() {
+  const status = $("wasmStatus");
+  try {
+    let bytes;
+    if (WASM_BASE64 && !WASM_BASE64.includes("__WASM")) {
+      bytes = base64ToBytes(WASM_BASE64);
+    } else {
+      const resp = await fetch("faultcalc.wasm");
+      if (!resp.ok) throw new Error("faultcalc.wasm not found. Run `make wasm` or open the generated standalone file.");
+      bytes = new Uint8Array(await resp.arrayBuffer());
+    }
+    const result = await WebAssembly.instantiate(bytes, {});
+    wasmExports = result.instance.exports;
+    if (!wasmExports.memory || !wasmExports.faultcalc_calculate || !wasmExports.faultcalc_alloc) {
+      throw new Error("Rust WASM exports are incomplete");
+    }
+    wasmReady = true;
+    status.className = "status-pill good";
+    status.lastElementChild.textContent = "Rust WASM ready";
+  } catch (err) {
+    console.error(err);
+    status.className = "status-pill bad";
+    status.lastElementChild.textContent = "WASM unavailable";
+    wasmReady = false;
+  }
+}
+function base64ToBytes(b64) { const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i); return bytes; }
+function wasmStringCall(fnName, input) {
+  if (!wasmExports) throw new Error("WASM engine is not loaded");
+  const bytes = textEncoder.encode(input || "");
+  const ptr = wasmExports.faultcalc_alloc(bytes.length);
+  new Uint8Array(wasmExports.memory.buffer).set(bytes, ptr);
+  const ok = wasmExports[fnName](ptr, bytes.length);
+  wasmExports.faultcalc_free(ptr, bytes.length);
+  if (!ok) throw new Error("WASM call failed");
+  return wasmReadOutput();
+}
+function wasmNoArgCall(fnName) {
+  if (!wasmExports) throw new Error("WASM engine is not loaded");
+  const ok = wasmExports[fnName]();
+  if (!ok) throw new Error("WASM call failed");
+  return wasmReadOutput();
+}
+function wasmReadOutput() {
+  const ptr = wasmExports.faultcalc_output_ptr();
+  const len = wasmExports.faultcalc_output_len();
+  const view = new Uint8Array(wasmExports.memory.buffer, ptr, len);
+  return textDecoder.decode(view);
+}
+function faultcalcCalculate(json) { return wasmStringCall("faultcalc_calculate", json); }
+function faultcalcSample() { return wasmNoArgCall("faultcalc_sample"); }
+function faultcalcVersion() { return wasmNoArgCall("faultcalc_version"); }
+
+function wireEvents() {
+  $("btnRun").onclick = runStudy;
+  $("btnImport").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = importCase;
+  $("btnExportCase").onclick = () => download("faultcalc-case.json", JSON.stringify(network, null, 2), "application/json");
+  $("btnExportReport").onclick = () => report && download("faultcalc-report.json", JSON.stringify(report, null, 2), "application/json");
+  $("btnExportCsv").onclick = () => report && download("faultcalc-report.csv", reportToCsv(report), "text/csv");
+  $("btnExportHtml").onclick = () => report && download("faultcalc-report.html", reportToHtml(), "text/html");
+  $("btnPrintReport").onclick = printReport;
+  $("btnAddBus").onclick = addBus;
+  $("btnAddUtility").onclick = addUtility;
+  $("btnAddTransformer").onclick = addTransformer;
+  $("btnAddFeeder").onclick = addFeeder;
+  $("btnAddMotor").onclick = addMotor;
+  $("btnAddGenerator").onclick = addGenerator;
+  $("btnAddSwitch").onclick = addSwitch;
+  $("btnAddBreaker").onclick = addBreaker;
+  $("btnAddMainTieMain").onclick = addMainTieMain;
+  $("btnAutoLayout").onclick = () => { autoLayout(); modelChanged(true); };
+  $("btnZoomIn").onclick = () => zoomAt(0.82);
+  $("btnZoomOut").onclick = () => zoomAt(1.22);
+  $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
+  $("snapGrid").onchange = () => { snapGrid = $("snapGrid").checked; };
+  $("btnRefreshJson").onclick = refreshJson;
+  $("btnApplyJson").onclick = applyJson;
+  document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => { currentTab = btn.dataset.tab; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b === btn)); renderNavigator(); });
+  ["projectName","projectNumber","projectEngineer","projectRevision"].forEach(id => $(id).oninput = () => { network.project = network.project || {}; network.project[id.replace("project","").toLowerCase()] = $(id).value; modelChanged(false); });
+  $("projectName").oninput = () => { network.project.name = $("projectName").value; modelChanged(false); };
+  $("projectNumber").oninput = () => { network.project.number = $("projectNumber").value; modelChanged(false); };
+  $("projectEngineer").oninput = () => { network.project.engineer = $("projectEngineer").value; modelChanged(false); };
+  $("projectRevision").oninput = () => { network.project.revision = $("projectRevision").value; modelChanged(false); };
+  $("projectDescription").oninput = () => { network.project.description = $("projectDescription").value; modelChanged(false); };
+  $("baseMva").oninput = () => { network.base_mva = num($("baseMva").value); modelChanged(false); };
+  $("frequencyHz").oninput = () => { network.frequency_hz = num($("frequencyHz").value); modelChanged(false); };
+  $("prefaultVoltage").oninput = () => { network.prefault_voltage_pu = num($("prefaultVoltage").value); modelChanged(false); };
+  $("faultR").oninput = () => { network.options.fault_r_ohm = num($("faultR").value); modelChanged(false); };
+  $("faultX").oninput = () => { network.options.fault_x_ohm = num($("faultX").value); modelChanged(false); };
+  $("dutyCycles").oninput = () => { network.options.duty_cycles = num($("dutyCycles").value); modelChanged(false); };
+}
+
+function syncProjectInputs() {
+  network.project = network.project || {};
+  $("projectName").value = network.project.name || "";
+  $("projectNumber").value = network.project.number || "";
+  $("projectEngineer").value = network.project.engineer || "";
+  $("projectRevision").value = network.project.revision || "";
+  $("projectDescription").value = network.project.description || "";
+}
+function syncStudyInputs() {
+  network.options = network.options || { fault_r_ohm: 0, fault_x_ohm: 0, duty_cycles: .5 };
+  $("baseMva").value = network.base_mva ?? 100;
+  $("frequencyHz").value = network.frequency_hz ?? 60;
+  $("prefaultVoltage").value = network.prefault_voltage_pu ?? 1;
+  $("faultR").value = network.options.fault_r_ohm ?? 0;
+  $("faultX").value = network.options.fault_x_ohm ?? 0;
+  $("dutyCycles").value = network.options.duty_cycles ?? .5;
+}
+function modelChanged(rerender=true) { report = null; localStorage.setItem("faultcalc-workstation-case", JSON.stringify(network)); $("saveState").textContent = "edited locally"; refreshJson(false); if (rerender) render(); }
+function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+
+function runStudy() {
+  if (!wasmReady) { showIssue("bad", "The WebAssembly engine is not ready. Rebuild with `make wasm` or open the generated standalone file."); return; }
+  try {
+    const raw = faultcalcCalculate(JSON.stringify(network));
+    const response = JSON.parse(raw);
+    if (!response.ok) throw new Error(response.error || "calculation failed");
+    report = response.report;
+    $("saveState").textContent = "study calculated in WASM";
+    render();
+  } catch (err) {
+    report = null; renderResults(); renderIssues([String(err.message || err)], true);
+  }
+}
+
+function render() { renderNavigator(); renderInspector(); renderCanvas(); renderResults(); renderSchedule(); renderDutyComparison(); renderIssues(); }
+function renderNavigator() {
+  const list = $("navigatorList");
+  const items = currentTab === "buses" ? network.buses : currentTab === "branches" ? network.branches : network.sources;
+  list.innerHTML = items.map(item => {
+    const type = currentTab === "buses" ? "bus" : currentTab === "branches" ? "branch" : "source";
+    const sel = selected.type === type && selected.id === item.id;
+    const title = item.name || item.id;
+    const sub = type === "bus" ? `${item.kv_ll} kV line-to-line` : type === "branch" ? `${busLabel(item.from)} to ${busLabel(item.to)} · ${item.kind || "branch"}` : `${busLabel(item.bus)} · ${item.kind || "source"}`;
+    return `<div class="list-item ${sel ? "selected" : ""}" onclick="selectItem('${type}','${item.id}')"><div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(sub)}</div></div>`;
+  }).join("") || `<div class="muted">No ${currentTab} yet.</div>`;
+}
+function selectItem(type, id) { selected = { type, id }; currentTab = type + "es"; if (type === "bus") currentTab = "buses"; if (type === "branch") currentTab = "branches"; if (type === "source") currentTab = "sources"; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); render(); }
+function selectedObj() { if (!selected.id) return null; const arr = selected.type === "bus" ? network.buses : selected.type === "branch" ? network.branches : network.sources; return arr.find(x => x.id === selected.id) || null; }
+function busLabel(id) { const b = network.buses.find(x => x.id === id); return b ? (b.name || b.id) : id; }
+
+function renderInspector() {
+  const el = $("inspector"); const obj = selectedObj();
+  if (!obj) { el.innerHTML = `<div class="muted">Select a bus, source, or branch.</div>`; return; }
+  const title = obj.name || obj.id;
+  let html = `<div class="inspector-head"><div><div class="inspector-title">${escapeHtml(title)}</div><div class="muted">${escapeHtml(selected.type)} · ${escapeHtml(obj.id)}</div></div><button class="small danger" onclick="deleteSelected()">Delete</button></div><div style="height:12px"></div>`;
+  if (selected.type === "bus") html += busEditor(obj);
+  if (selected.type === "branch") html += branchEditor(obj);
+  if (selected.type === "source") html += sourceEditor(obj);
+  el.innerHTML = html;
+}
+function field(label, path, value, type="text", unit="") { return `<div class="field"><label>${label}<span class="unit">${unit}</span></label><input type="${type}" value="${escapeHtml(value ?? "")}" onchange="editSelected('${path}', this.value, '${type}')" oninput="editSelected('${path}', this.value, '${type}', true)"></div>`; }
+function selectField(label, path, value, options) { return `<div class="field"><label>${label}</label><select onchange="editSelected('${path}', this.value, 'text')">${options.map(o => `<option value="${o}" ${o===value?"selected":""}>${o}</option>`).join("")}</select></div>`; }
+function busSelect(label, path, value) { return `<div class="field"><label>${label}</label><select onchange="editSelected('${path}', this.value, 'text')">${network.buses.map(b => `<option value="${b.id}" ${b.id===value?"selected":""}>${escapeHtml(b.name || b.id)}</option>`).join("")}</select></div>`; }
+function checkboxField(label, path, checked) { return `<label class="tag"><input type="checkbox" ${checked ? "checked" : ""} onchange="editSelected('${path}', this.checked, 'bool')" style="width:auto"> ${label}</label>`; }
+function busEditor(b) { return field("Name", "name", b.name) + `<div class="grid-3">${field("kV LL", "kv_ll", b.kv_ll, "number", "kV")}${field("X", "x", b.x, "number")}${field("Y", "y", b.y, "number")}</div>` + field("Notes", "notes", b.notes || ""); }
+function branchEditor(br) {
+  return selectField("Kind", "kind", br.kind || "feeder", ["feeder","transformer","impedance","reactor","switch","breaker","tie"])
+    + field("Name", "name", br.name)
+    + `<div class="grid-2">${busSelect("From", "from", br.from)}${busSelect("To", "to", br.to)}</div>`
+    + `<div class="grid-2">${selectField("State", "state", br.state || (br.enabled === false ? "normally_open" : "normally_closed"), ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}${selectField("Route", "route_mode", br.route_mode || "orthogonal", ["orthogonal","direct","manual"])}</div>`
+    + `<div class="grid-2">${selectField("Primary", "primary_connection", br.primary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}${selectField("Secondary", "secondary_connection", br.secondary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</div>`
+    + `<div class="route-tools"><div>${routeField(br)}</div><button class="small ghost" onclick="setOrthogonalRoute()">Auto route</button></div>`
+    + `<div class="grid-2">${field("Z1 R", "z1_pu.r", br.z1_pu?.r, "number", "pu")}${field("Z1 X", "z1_pu.x", br.z1_pu?.x, "number", "pu")}</div>`
+    + `<div class="grid-2">${field("Z2 R", "z2_pu.r", br.z2_pu?.r, "number", "pu")}${field("Z2 X", "z2_pu.x", br.z2_pu?.x, "number", "pu")}</div>`
+    + `${checkboxField("enabled", "enabled", br.enabled !== false)} ${checkboxField("zero sequence path", "has_z0", br.has_z0)}<div style="height:8px"></div>`
+    + `<div class="grid-2">${field("Z0 R", "z0_pu.r", br.z0_pu?.r, "number", "pu")}${field("Z0 X", "z0_pu.x", br.z0_pu?.x, "number", "pu")}</div>`
+    + `<div class="grid-2">${field("Rating", "rating_a", br.rating_a || "", "number", "A")}${field("Length", "length_m", br.length_m || "", "number", "m")}</div>`
+    + field("Notes", "notes", br.notes || "");
+}
+function sourceEditor(s) {
+  return selectField("Kind", "kind", s.kind || "utility", ["utility","generator","motor","inverter","grid"])
+    + field("Name", "name", s.name)
+    + busSelect("Bus", "bus", s.bus)
+    + selectField("State", "state", s.state || (s.enabled === false ? "out_of_service" : "in_service"), ["in_service","out_of_service","maintenance_open","emergency_parallel"])
+    + `<div class="grid-2">${field("Z1 R", "z1_pu.r", s.z1_pu?.r, "number", "pu")}${field("Z1 X", "z1_pu.x", s.z1_pu?.x, "number", "pu")}</div>`
+    + `<div class="grid-2">${field("Z2 R", "z2_pu.r", s.z2_pu?.r, "number", "pu")}${field("Z2 X", "z2_pu.x", s.z2_pu?.x, "number", "pu")}</div>`
+    + `${checkboxField("enabled", "enabled", s.enabled !== false)} ${checkboxField("zero sequence source", "has_z0", s.has_z0)}<div style="height:8px"></div>`
+    + `<div class="grid-2">${field("Z0 R", "z0_pu.r", s.z0_pu?.r, "number", "pu")}${field("Z0 X", "z0_pu.x", s.z0_pu?.x, "number", "pu")}</div>`
+    + field("Rating", "rating", s.rating || "") + field("Notes", "notes", s.notes || "");
+}
+function routeField(br) { return `<div class="field"><label>Route points <span class="unit">x,y; x,y</span></label><input value="${escapeHtml(routeText(br))}" onchange="editRoute(this.value)"></div>`; }
+function routeText(br) { return Array.isArray(br.route) ? br.route.map(p => `${fmt(p.x,0)},${fmt(p.y,0)}`).join("; ") : ""; }
+function editRoute(value) { const br = selectedObj(); if (!br || selected.type !== "branch") return; br.route = value.split(";").map(part => part.trim()).filter(Boolean).map(part => { const [x,y] = part.split(",").map(num); return {x, y}; }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)); br.route_mode = br.route.length ? "manual" : "orthogonal"; modelChanged(true); }
+function setOrthogonalRoute() { const br = selectedObj(); if (!br || selected.type !== "branch") return; br.route = []; br.route_mode = "orthogonal"; modelChanged(true); }
+function editSelected(path, value, type, quiet=false) {
+  const obj = selectedObj(); if (!obj) return;
+  setPath(obj, path, type === "number" ? num(value) : type === "bool" ? !!value : value);
+  if (path === "state") syncEnabledFromState(obj);
+  if (path === "enabled") obj.state = selected.type === "source" ? (obj.enabled ? "in_service" : "out_of_service") : (obj.enabled ? "normally_closed" : "normally_open");
+  modelChanged(!quiet);
+}
+function setPath(obj, path, value) { const parts = path.split("."); let o = obj; for (let i=0; i<parts.length-1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts.at(-1)] = value; }
+function syncEnabledFromState(obj) { const state = String(obj.state || ""); obj.enabled = !state.includes("open") && state !== "out_of_service"; }
+
+function renderCanvas() {
+  const svg = $("oneLine");
+  const defs = `<defs><filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  const branchSvg = network.branches.map(renderBranch).join("");
+  const sourceSvg = network.sources.map(renderSource).join("");
+  const busSvg = network.buses.map(renderBus).join("");
+  svg.setAttribute("viewBox", `${canvasView.x} ${canvasView.y} ${canvasView.w} ${canvasView.h}`);
+  svg.innerHTML = defs + branchSvg + sourceSvg + busSvg;
+  svg.onpointerdown = startCanvasPan; svg.onpointermove = onCanvasMove; svg.onpointerup = endDrag; svg.onpointerleave = endDrag; svg.onwheel = onCanvasWheel;
+}
+function busPos(id) { const b = network.buses.find(x => x.id === id); return b ? {x: Number(b.x)||0, y: Number(b.y)||0, b} : {x:0,y:0,b:null}; }
+function renderBranch(br) {
+  const points = branchPoints(br); const mid = polylineMidpoint(points);
+  const sel = selected.type === "branch" && selected.id === br.id;
+  const kind = br.kind || "feeder";
+  const open = isOpen(br);
+  const d = pathD(points);
+  const symbol = branchSymbol(br, mid.x, mid.y);
+  return `<g><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/><path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}<text class="svg-small" x="${mid.x}" y="${mid.y-26}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text></g>`;
+}
+function branchPoints(br) {
+  const a = busPos(br.from), b = busPos(br.to);
+  if (br.route_mode === "direct") return [{x:a.x,y:a.y}, {x:b.x,y:b.y}];
+  if (Array.isArray(br.route) && br.route.length) return [{x:a.x,y:a.y}, ...br.route.map(p => ({x:num(p.x), y:num(p.y)})), {x:b.x,y:b.y}];
+  const mx = snap((a.x + b.x) / 2);
+  return [{x:a.x,y:a.y}, {x:mx,y:a.y}, {x:mx,y:b.y}, {x:b.x,y:b.y}];
+}
+function pathD(points) { return points.map((p,i) => `${i ? "L" : "M"}${fmt(p.x,1)} ${fmt(p.y,1)}`).join(" "); }
+function polylineMidpoint(points) {
+  let total = 0;
+  for (let i=1;i<points.length;i++) total += Math.hypot(points[i].x-points[i-1].x, points[i].y-points[i-1].y);
+  let acc = 0, half = total / 2;
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1], b = points[i], len = Math.hypot(b.x-a.x, b.y-a.y);
+    if (acc + len >= half) { const t = len ? (half - acc) / len : 0; return {x:a.x + (b.x-a.x)*t, y:a.y + (b.y-a.y)*t}; }
+    acc += len;
+  }
+  return points[0] || {x:0,y:0};
+}
+function branchSymbol(br, x, y) {
+  const kind = br.kind || "feeder";
+  const state = br.state || (br.enabled === false ? "normally_open" : "normally_closed");
+  if (kind === "transformer") {
+    const p = connectionGlyph(br.primary_connection || "grounded_wye"), s = connectionGlyph(br.secondary_connection || "grounded_wye");
+    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-15}" cy="${y}" r="13"/><circle class="equip-symbol" cx="${x+15}" cy="${y}" r="13"/><text class="equip-label" x="${x-15}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+15}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
+  }
+  if (kind === "breaker" || kind === "tie") {
+    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-20}" y="${y-12}" width="40" height="24" rx="3"/><line x1="${x-13}" y1="${y}" x2="${x+13}" y2="${y}" stroke="#cbd5e1" stroke-width="2"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+25}" text-anchor="middle">${stateLabel(state)}</text></g>`;
+  }
+  if (kind === "switch") {
+    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#cbd5e1" stroke-width="2"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#cbd5e1" stroke-width="2"/>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-19}" cy="${y}" r="3"/><circle class="equip-symbol" cx="${x+19}" cy="${y}" r="3"/>${blade}<text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
+  }
+  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-17}" y="${y-9}" width="34" height="18" rx="4"/><line x1="${x-10}" y1="${y+8}" x2="${x+10}" y2="${y-8}" stroke="#cbd5e1" stroke-width="2"/></g>`;
+}
+function connectionGlyph(v) { return v === "delta" ? "D" : v === "grounding" ? "G" : v === "wye" ? "Y" : "Yg"; }
+function stateLabel(v) { return String(v || "").includes("open") ? "open" : "closed"; }
+function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
+function renderSource(s) {
+  const p = busPos(s.bus); const sx = p.x, sy = p.y - 92; const sel = selected.type === "source" && selected.id === s.id;
+  const label = s.kind === "motor" ? "M" : s.kind === "generator" ? "G" : s.kind === "inverter" ? "INV" : "∞";
+  return `<g onclick="selectItem('source','${s.id}')"><line class="branch-line" x1="${p.x}" y1="${p.y-26}" x2="${sx}" y2="${sy+23}"/><circle class="source-symbol ${sel ? "source-selected" : ""}" cx="${sx}" cy="${sy}" r="24"/><text class="svg-label" x="${sx}" y="${sy+5}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-34}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text></g>`;
+}
+function renderBus(b) {
+  const sel = selected.type === "bus" && selected.id === b.id; const r = busReport(b.id); const chip = r ? `<rect class="fault-chip" x="${b.x-62}" y="${b.y+35}" width="124" height="20"/><text class="fault-chip-text" x="${b.x}" y="${b.y+49}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA · SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
+  return `<g data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-card ${sel ? "selected" : ""}" x="${b.x-72}" y="${b.y-30}" width="144" height="60"/><line class="busbar" x1="${b.x-52}" y1="${b.y-8}" x2="${b.x+52}" y2="${b.y-8}"/><text class="svg-label" x="${b.x}" y="${b.y+13}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><text class="svg-small" x="${b.x}" y="${b.y+27}" text-anchor="middle">${fmt(b.kv_ll, 3)} kV</text>${chip}</g>`;
+}
+function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
+function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
+function startBusDrag(evt, id) { evt.stopPropagation(); selectItem('bus', id); const p = svgPoint(evt); const b = network.buses.find(x => x.id === id); drag = { id, dx: b.x - p.x, dy: b.y - p.y }; }
+function startCanvasPan(evt) { if (evt.target !== $("oneLine")) return; pan = { x: evt.clientX, y: evt.clientY, view: {...canvasView} }; }
+function onCanvasMove(evt) {
+  if (drag) { const p = svgPoint(evt); const b = network.buses.find(x => x.id === drag.id); if (!b) return; b.x = snap(p.x + drag.dx); b.y = snap(p.y + drag.dy); modelChanged(true); return; }
+  if (pan) { const svg = $("oneLine"); canvasView.x = pan.view.x - (evt.clientX - pan.x) * canvasView.w / svg.clientWidth; canvasView.y = pan.view.y - (evt.clientY - pan.y) * canvasView.h / svg.clientHeight; renderCanvas(); }
+}
+function endDrag() { if (drag) { drag = null; refreshJson(false); } pan = null; }
+function svgPoint(evt) { const svg = $("oneLine"); const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function snap(v) { return snapGrid ? Math.round(v / GRID) * GRID : Math.round(v); }
+function onCanvasWheel(evt) { evt.preventDefault(); zoomAt(evt.deltaY < 0 ? 0.88 : 1.14, svgPoint(evt)); }
+function zoomAt(factor, center) {
+  center = center || { x: canvasView.x + canvasView.w / 2, y: canvasView.y + canvasView.h / 2 };
+  const nextW = Math.min(2200, Math.max(320, canvasView.w * factor));
+  const nextH = Math.min(1240, Math.max(180, canvasView.h * factor));
+  canvasView.x = center.x - (center.x - canvasView.x) * (nextW / canvasView.w);
+  canvasView.y = center.y - (center.y - canvasView.y) * (nextH / canvasView.h);
+  canvasView.w = nextW; canvasView.h = nextH; renderCanvas();
+}
+function fitCanvas() {
+  if (!network.buses.length) { canvasView = { x:0, y:0, w:1100, h:620 }; return; }
+  const xs = network.buses.map(b => num(b.x)), ys = network.buses.map(b => num(b.y));
+  const minX = Math.min(...xs) - 180, maxX = Math.max(...xs) + 180, minY = Math.min(...ys) - 150, maxY = Math.max(...ys) + 180;
+  canvasView = { x:minX, y:minY, w:Math.max(420, maxX-minX), h:Math.max(260, maxY-minY) };
+}
+
+function renderResults() {
+  const kpi = $("kpiRow");
+  if (!report) {
+    kpi.innerHTML = `<div class="kpi"><div class="label">Status</div><div class="value">Not run</div><div class="subv">press Run study</div></div><div class="kpi"><div class="label">Buses</div><div class="value">${network.buses.length}</div><div class="subv">model nodes</div></div><div class="kpi"><div class="label">Branches</div><div class="value">${network.branches.length}</div><div class="subv">series elements</div></div><div class="kpi"><div class="label">Sources</div><div class="value">${network.sources.length}</div><div class="subv">shunt sources</div></div>`;
+    $("resultsTable").querySelector("tbody").innerHTML = "";
+    return;
+  }
+  kpi.innerHTML = `<div class="kpi"><div class="label">Max 3PH</div><div class="value">${fmtKA(report.summary.max_3ph_ka)}</div><div class="subv">${escapeHtml(report.summary.max_3ph_bus || "")} kA</div></div><div class="kpi"><div class="label">Max SLG</div><div class="value">${fmtKA(report.summary.max_slg_ka)}</div><div class="subv">${escapeHtml(report.summary.max_slg_bus || "")} kA</div></div><div class="kpi"><div class="label">Buses solved</div><div class="value">${report.buses.length}</div><div class="subv">all buses</div></div><div class="kpi"><div class="label">Engine</div><div class="value" style="font-size:16px">WASM</div><div class="subv">${escapeHtml(report.version)}</div></div>`;
+  const rows = [];
+  for (const b of report.buses) for (const f of b.faults) rows.push(`<tr><td>${escapeHtml(b.bus)}</td><td>${fmt(b.kv_ll,3)}</td><td><span class="tag">${f.kind}</span></td><td class="num">${fmt(f.available_sym_ka,3)}</td><td class="num">${fmt(f.peak_asym_ka,3)}</td><td class="num">${fmt(f.asym_rms_ka,3)}</td><td class="num">${f.x_over_r === null ? "" : fmt(f.x_over_r,2)}</td><td class="num">${f.ground_return_ka === null ? "" : fmt(f.ground_return_ka,3)}</td></tr>`);
+  $("resultsTable").querySelector("tbody").innerHTML = rows.join("");
+}
+function renderSchedule() {
+  const rows = [];
+  for (const b of network.buses) rows.push(`<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${fmt(b.kv_ll,3)} kV</td><td></td></tr>`);
+  for (const br of network.branches) rows.push(`<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(busLabel(br.from))} to ${escapeHtml(busLabel(br.to))}</td><td>${br.rating_a ? fmt(br.rating_a,0) + " A" : ""}</td></tr>`);
+  for (const s of network.sources) rows.push(`<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`);
+  $("scheduleTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No equipment defined.</td></tr>`;
+}
+function renderDutyComparison() {
+  const rows = [];
+  for (const br of network.branches) {
+    const rating = num(br.rating_a);
+    const duty = Math.max(maxFaultAmps(br.from), maxFaultAmps(br.to));
+    const status = !report ? "not run" : !rating ? "missing rating" : rating >= duty ? "pass" : "over duty";
+    const cls = status === "pass" ? "pass" : status === "over duty" ? "fail" : "muted";
+    rows.push(`<tr><td>${escapeHtml(br.name || br.id)}</td><td class="num">${rating ? fmt(rating,0) : ""}</td><td class="num">${duty ? fmt(duty,0) : ""}</td><td class="${cls}">${status}</td></tr>`);
+  }
+  $("dutyTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No branch ratings to compare.</td></tr>`;
+}
+function maxFaultAmps(busId) {
+  const r = busReport(busId);
+  if (!r) return 0;
+  return Math.max(...r.faults.map(f => num(f.available_sym_ka))) * 1000;
+}
+function renderIssues(extra, bad=false) {
+  const log = $("issueLog"); const messages = extra || [];
+  if (report?.warnings?.length) messages.push(...report.warnings);
+  const local = validateLocal(); if (local.length) messages.push(...local);
+  if (!messages.length) { log.innerHTML = `<div class="ok">No model validation warnings from the current run.</div><div class="muted" style="font-size:12px;line-height:1.45">This tool uses transparent symmetrical-component calculations. It does not embed proprietary IEEE or ANSI multiplying-factor tables.</div>`; return; }
+  log.innerHTML = messages.map(m => `<div class="${bad ? "bad" : "warn"}">${escapeHtml(m)}</div>`).join("");
+}
+function showIssue(kind, msg) { $("issueLog").innerHTML = `<div class="${kind}">${escapeHtml(msg)}</div>`; }
+function validateLocal() {
+  const out = [];
+  if (!network.sources.length) out.push("No source equivalents are defined.");
+  for (const br of network.branches) {
+    if (!network.buses.find(b => b.id === br.from) || !network.buses.find(b => b.id === br.to)) out.push(`Branch ${br.name || br.id} references a missing bus.`);
+    if (br.enabled !== false && !num(br.rating_a) && ["breaker","switch","tie","feeder","transformer"].includes(br.kind || "")) out.push(`Branch ${br.name || br.id} has no equipment rating for duty comparison.`);
+    if (br.enabled !== false && !br.has_z0) out.push(`Branch ${br.name || br.id} has no zero-sequence path.`);
+  }
+  for (const s of network.sources) {
+    if (!network.buses.find(b => b.id === s.bus)) out.push(`Source ${s.name || s.id} references a missing bus.`);
+    if (s.enabled !== false && !s.rating) out.push(`Source ${s.name || s.id} has no rating metadata.`);
+    if (s.enabled !== false && !s.has_z0 && ["utility","generator"].includes(s.kind || "")) out.push(`Source ${s.name || s.id} has no zero-sequence data.`);
+  }
+  return out;
+}
+
+function addBus() { const id = nextId("bus", network.buses); network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: 0.48, x: 180 + network.buses.length*160, y: 470 }); selectItem("bus", id); modelChanged(true); }
+function addUtility() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses[0].id; const id = nextId("src", network.sources); network.sources.push({ id, kind: "utility", name: "Utility equivalent", bus, z1_pu:{r:.000995,x:.00995}, z2_pu:{r:.000995,x:.00995}, z0_pu:{r:.000995,x:.00995}, has_z0:true, enabled:true, state:"in_service", rating:"500 MVA, X/R 10" }); selectItem("source", id); modelChanged(true); }
+function addMotor() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("mot", network.sources); network.sources.push({ id, kind:"motor", name:"Motor contribution", bus, z1_pu:{r:18,x:95}, z2_pu:{r:18,x:95}, z0_pu:{r:25,x:120}, has_z0:false, enabled:true, state:"in_service", rating:"aggregate" }); selectItem("source", id); modelChanged(true); }
+function addGenerator() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("gen", network.sources); network.sources.push({ id, kind:"generator", name:"Synchronous generator", bus, z1_pu:{r:.02,x:.18}, z2_pu:{r:.02,x:.18}, z0_pu:{r:.04,x:.12}, has_z0:true, enabled:true, state:"in_service", rating:"generator subtransient model" }); selectItem("source", id); modelChanged(true); }
+function addTransformer() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("tx", network.branches); network.branches.push({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", route_mode:"orthogonal", primary_connection:"delta", secondary_connection:"grounded_wye", z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:1800, length_m:0, notes:"Edit %Z conversion in JSON or use programmatic builder." }); selectItem("branch", id); modelChanged(true); }
+function addFeeder() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("fdr", network.branches); network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", route_mode:"orthogonal", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }); selectItem("branch", id); modelChanged(true); }
+function addSwitch() { addSwitchingBranch("switch", "Disconnect switch", "normally_open", false); }
+function addBreaker() { addSwitchingBranch("breaker", "Circuit breaker", "normally_closed", true); }
+function addSwitchingBranch(kind, name, state, enabled) {
+  ensureTwoBuses();
+  const [from,to] = branchEndpoints();
+  const id = nextId(kind === "breaker" ? "cb" : "sw", network.branches);
+  network.branches.push({ id, kind, name, from, to, state, route_mode:"orthogonal", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled, rating_a:1200, length_m:0 });
+  selectItem("branch", id); modelChanged(true);
+}
+function addMainTieMain() {
+  const base = nextId("mtm", network.buses);
+  const y = 390 + network.buses.length * 12;
+  const a = `${base}_a`, b = `${base}_b`;
+  network.buses.push({ id:a, name:"Main A Switchboard", kv_ll:.48, x:260, y });
+  network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:.48, x:620, y });
+  const tie = nextId("tie", network.branches);
+  network.branches.push({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", route_mode:"orthogonal", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 });
+  network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility A", bus:a, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service A" });
+  network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility B", bus:b, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service B" });
+  selectItem("branch", tie); fitCanvas(); modelChanged(true);
+}
+function ensureTwoBuses() { while (network.buses.length < 2) addBus(); }
+function branchEndpoints() { if (selected.type === "bus" && selected.id) { const other = network.buses.find(b => b.id !== selected.id) || network.buses[0]; return [selected.id, other.id]; } return [network.buses[0].id, network.buses[1].id]; }
+function nextId(prefix, arr) { let i = arr.length + 1; while (arr.find(x => x.id === `${prefix}_${i}`)) i++; return `${prefix}_${i}`; }
+function deleteSelected() { if (!selected.id) return; if (selected.type === "bus") { network.branches = network.branches.filter(b => b.from !== selected.id && b.to !== selected.id); network.sources = network.sources.filter(s => s.bus !== selected.id); network.buses = network.buses.filter(b => b.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else if (selected.type === "branch") { network.branches = network.branches.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } else { network.sources = network.sources.filter(x => x.id !== selected.id); selected = { type: "bus", id: network.buses[0]?.id || null }; } modelChanged(true); }
+function autoLayout() { const n = network.buses.length; network.buses.forEach((b,i) => { b.x = 140 + i * Math.min(230, 860 / Math.max(1,n-1)); b.y = i % 2 ? 340 : 250; }); }
+
+async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = JSON.parse(text); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
+function refreshJson(overwrite=true) { if (overwrite) $("rawJson").value = JSON.stringify(network, null, 2); }
+function applyJson() { try { network = JSON.parse($("rawJson").value); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
+function download(name, text, type) { const blob = new Blob([text], {type}); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+function reportToCsv(r) {
+  const rows = [["bus_id","bus","kv_ll","fault","sym_ka","peak_asym_ka","asym_rms_ka","x_over_r","ground_return_ka","z_eq_r_pu","z_eq_x_pu","notes"]];
+  for (const b of r.buses) for (const f of b.faults) rows.push([b.bus_id,b.bus,b.kv_ll,f.kind,f.available_sym_ka,f.peak_asym_ka,f.asym_rms_ka,f.x_over_r,f.ground_return_ka,f.equivalent_z_pu?.r,f.equivalent_z_pu?.x,(f.notes||[]).join("; ")]);
+  return rows.map(row => row.map(v => `"${String(v ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
+}
+function reportToHtml() {
+  if (!report) return "";
+  const resultRows = report.buses.flatMap(b => b.faults.map(f => `<tr><td>${escapeHtml(b.bus)}</td><td>${fmt(b.kv_ll,3)}</td><td>${f.kind}</td><td>${fmt(f.available_sym_ka,3)}</td><td>${fmt(f.peak_asym_ka,3)}</td><td>${fmt(f.asym_rms_ka,3)}</td><td>${f.x_over_r === null ? "" : fmt(f.x_over_r,2)}</td><td>${f.ground_return_ka === null ? "" : fmt(f.ground_return_ka,3)}</td></tr>`)).join("");
+  const scheduleRows = [...network.buses.map(b => `<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${fmt(b.kv_ll,3)} kV</td><td></td></tr>`), ...network.branches.map(br => `<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(busLabel(br.from))} to ${escapeHtml(busLabel(br.to))}</td><td>${br.rating_a ? fmt(br.rating_a,0) + " A" : ""}</td></tr>`), ...network.sources.map(s => `<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`)].join("");
+  const warningRows = (report.warnings || []).map(w => `<li>${escapeHtml(w)}</li>`).join("") || "<li>No calculation warnings.</li>";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(network.project?.name || "FaultCalc report")}</title><style>body{font-family:Arial,sans-serif;color:#111827;margin:32px}h1{font-size:22px}h2{font-size:16px;margin-top:24px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#e5e7eb}.num{text-align:right}.meta{color:#4b5563}@media print{body{margin:18mm}}</style></head><body><h1>${escapeHtml(network.project?.name || "FaultCalc report")}</h1><p class="meta">Project ${escapeHtml(network.project?.number || "")} · Engineer ${escapeHtml(network.project?.engineer || "")} · Revision ${escapeHtml(network.project?.revision || "")}</p><p>${escapeHtml(network.project?.description || "")}</p><h2>Summary</h2><table><tr><th>Base MVA</th><th>Frequency</th><th>Prefault</th><th>Max 3PH</th><th>Max SLG</th></tr><tr><td>${fmt(report.base_mva,3)}</td><td>${fmt(report.frequency_hz,2)} Hz</td><td>${fmt(report.prefault_voltage_pu,3)} pu</td><td>${fmt(report.summary.max_3ph_ka,3)} kA at ${escapeHtml(report.summary.max_3ph_bus)}</td><td>${fmt(report.summary.max_slg_ka,3)} kA at ${escapeHtml(report.summary.max_slg_bus)}</td></tr></table><h2>Fault Results</h2><table><thead><tr><th>Bus</th><th>kV</th><th>Fault</th><th>Sym kA</th><th>Peak kA</th><th>Asym RMS kA</th><th>X/R</th><th>Ground kA</th></tr></thead><tbody>${resultRows}</tbody></table><h2>Equipment Schedule</h2><table><thead><tr><th>Type</th><th>Name</th><th>Connection</th><th>Rating</th></tr></thead><tbody>${scheduleRows}</tbody></table><h2>Warnings</h2><ul>${warningRows}</ul><h2>Method Appendix</h2><p>Calculations use per-unit sequence networks. Sources are shunts behind sequence impedance, branches are series sequence impedances, and each bus is solved for driving-point Thevenin impedance.</p><p>3PH: I = V / (Z1 + Zf). SLG: Ia = 3V / (Z1 + Z2 + Z0 + 3Zf). LL: line current = sqrt(3) * |V / (Z1 + Z2 + Zf)|. DLG uses the negative and zero sequence parallel path and reconstructs phase currents.</p><p>Fault impedance is converted from ohms with Zbase = kV^2 / MVA. Reported kA uses Ibase = MVA / (sqrt(3) * kV). This report does not include proprietary IEEE or ANSI multiplying-factor tables.</p></body></html>`;
+}
+function printReport() {
+  if (!report) { showIssue("warn", "Run the study before opening the report view."); return; }
+  const w = window.open("", "_blank");
+  if (!w) { download("faultcalc-report.html", reportToHtml(), "text/html"); return; }
+  w.document.open(); w.document.write(reportToHtml()); w.document.close(); w.focus(); setTimeout(() => w.print(), 250);
+}
+
+function fallbackSample() { return { project:{name:"Fallback sample", revision:"A"}, base_mva:100, frequency_hz:60, prefault_voltage_pu:1, options:{fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5}, buses:[{id:"util",name:"Utility",kv_ll:12.47,x:150,y:240},{id:"msb",name:"MSB",kv_ll:.48,x:430,y:240}], branches:[{id:"tx1",kind:"transformer",name:"Transformer",from:"util",to:"msb",z1_pu:{r:.00588,x:.04118},z2_pu:{r:.00588,x:.04118},z0_pu:{r:.00588,x:.04118},has_z0:true,enabled:true}], sources:[{id:"src1",kind:"utility",name:"Utility equivalent",bus:"util",z1_pu:{r:.000995,x:.00995},z2_pu:{r:.000995,x:.00995},z0_pu:{r:.000995,x:.00995},has_z0:true,enabled:true}] }; }
+
+window.selectItem = selectItem; window.editSelected = editSelected; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag;
+boot();
+</script>
+</body>
+</html>

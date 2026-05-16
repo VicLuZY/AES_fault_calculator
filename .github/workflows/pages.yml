@@ -1,0 +1,62 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build static workstation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Run Rust tests
+        run: cargo test --workspace
+
+      - name: Build native CLI
+        run: cargo build -p faultcalc-cli --release
+
+      - name: Build Rust WASM
+        run: cargo build -p faultcalc-wasm --release --target wasm32-unknown-unknown
+
+      - name: Prepare static Pages artifact
+        run: |
+          cp target/wasm32-unknown-unknown/release/faultcalc_wasm.wasm web/faultcalc.wasm
+          target/release/faultcalc embed-wasm web/index.template.html web/faultcalc.wasm web/faultcalc_workstation.html
+          touch web/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

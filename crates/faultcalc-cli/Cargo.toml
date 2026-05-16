@@ -1,0 +1,17 @@
+[package]
+name = "faultcalc-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "faultcalc"
+path = "src/main.rs"
+
+[dependencies]
+faultcalc-core = { path = "../faultcalc-core" }
+serde_json.workspace = true
+
+[dev-dependencies]
+faultcalc-wasm = { path = "../faultcalc-wasm" }
