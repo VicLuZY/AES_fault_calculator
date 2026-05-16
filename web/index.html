@@ -338,6 +338,7 @@ const ASSET_VERSION = "2026-05-16-simple-sld";
 const $ = (id) => document.getElementById(id);
 const fmt = (v, d=2) => (v === null || v === undefined || Number.isNaN(v)) ? "" : Number(v).toFixed(d);
 const fmtKA = (v) => v ? Number(v).toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : "0.00";
+const fmtA = (v) => v ? Number(v).toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : "";
 const escapeHtml = (s) => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 let network = null;
 let report = null;
@@ -352,6 +353,10 @@ let drag = null;
 let pan = null;
 let snapGrid = true;
 const GRID = 28;
+const BUS_WIDTH = 190;
+const BUS_HORIZONTAL_SPACING = 320;
+const BUS_VERTICAL_SPACING = 340;
+const INSERT_SPACING = 224;
 let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
 const DEFAULT_SECONDARY_KV = 0.6;
 const SQRT3 = Math.sqrt(3);
@@ -370,7 +375,7 @@ const VOLTAGE_OPTIONS = [
 ];
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const CASE_VERSION_KEY = "faultcalc-workstation-case-version";
-const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout";
+const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout-v2";
 
 async function boot() {
   wireEvents();
@@ -590,6 +595,50 @@ function setCaseBusVoltage(caseModel, id, kv) {
   const bus = caseModel.buses.find(b => b.id === id);
   if (bus) bus.kv_ll = normalizeVoltageKv(kv);
 }
+function transformerKva(br) {
+  const stored = num(br.rating_kva ?? br.kva);
+  if (stored > 0) return stored;
+  const secKv = busVoltage(network, br.to);
+  return num(br.rating_a) && secKv ? num(br.rating_a) * Math.sqrt(3) * secKv : 0;
+}
+function transformerPercentZ(br) {
+  const stored = num(br.impedance_percent ?? br.z_percent);
+  if (stored > 0) return stored;
+  const kva = transformerKva(br);
+  const baseMva = num(network?.base_mva || 100);
+  const z = Math.hypot(num(br.z1_pu?.r), num(br.z1_pu?.x));
+  return kva > 0 && baseMva > 0 && z > 0 ? z * (kva / 1000) / baseMva * 100 : 0;
+}
+function transformerRatedCurrent(br, busId) {
+  const kva = transformerKva(br);
+  const kv = busVoltage(network, busId);
+  return kva > 0 && kv > 0 ? kva / (Math.sqrt(3) * kv) : 0;
+}
+function impedanceFromPercent(kva, percent, xr=7) {
+  const ownMva = kva / 1000;
+  const mag = ownMva > 0 ? (percent / 100) * num(network.base_mva || 100) / ownMva : 0;
+  const ratio = xr > 0 ? xr : 7;
+  const r = mag / Math.sqrt(1 + ratio * ratio);
+  return { r, x:r * ratio };
+}
+function syncTransformerDerivedValues(br, updateImpedance=false) {
+  if (!br || (br.kind || "") !== "transformer") return;
+  const kva = transformerKva(br);
+  if (kva > 0) {
+    br.rating_kva = kva;
+    const secA = transformerRatedCurrent(br, br.to);
+    if (secA > 0) br.rating_a = secA;
+  }
+  if (!updateImpedance) return;
+  const pct = transformerPercentZ(br);
+  if (kva > 0 && pct > 0) {
+    br.impedance_percent = pct;
+    const z = impedanceFromPercent(kva, pct, num(br.xr_ratio || 7));
+    br.z1_pu = { ...z };
+    br.z2_pu = { ...z };
+    if (br.has_z0 !== false) br.z0_pu = { ...z };
+  }
+}
 function syncConnectedBusVoltage(startId, kv, caseModel=network) {
   if (!startId || !caseModel?.buses?.length) return;
   const nextKv = normalizeVoltageKv(kv);
@@ -707,6 +756,7 @@ function ensureLayout() {
     const p = layout.buses[bus.id];
     if (!p || !Number.isFinite(Number(p.x)) || !Number.isFinite(Number(p.y))) layout.buses[bus.id] = auto[bus.id] || nextBusPosition();
   }
+  resolveLayoutOverlaps();
 }
 function autoLayoutPositions() {
   const positions = {};
@@ -735,21 +785,110 @@ function autoLayoutPositions() {
   ids.forEach((id, i) => { if (layer[id] === undefined) layer[id] = Math.max(0, ...Object.values(layer), 0) + 1 + i; });
   const groups = {};
   ids.forEach(id => { groups[layer[id]] = groups[layer[id]] || []; groups[layer[id]].push(id); });
-  Object.keys(groups).map(Number).sort((a,b) => a-b).forEach(col => {
-    const group = groups[col];
+  Object.keys(groups).map(Number).sort((a,b) => a-b).forEach(layerIndex => {
+    const group = groups[layerIndex];
     group.forEach((id, row) => {
-      positions[id] = { x: 220 + col * 340, y: 370 + (row - (group.length - 1) / 2) * 210 };
+      positions[id] = { x: snap(560 + (row - (group.length - 1) / 2) * BUS_HORIZONTAL_SPACING), y: snap(270 + layerIndex * BUS_VERTICAL_SPACING) };
     });
   });
   return positions;
 }
-function nextBusPosition(fromId) {
+function nextBusPosition(fromId, terminal="bottom", ignoreIds=[]) {
   if (fromId && layout?.buses?.[fromId]) {
     const p = layout.buses[fromId];
-    return { x: snap(Number(p.x) + 340), y: snap(Number(p.y)) };
+    const direction = terminalDirection(terminal);
+    const spacing = direction.x ? BUS_HORIZONTAL_SPACING : BUS_VERTICAL_SPACING;
+    return avoidBusOverlap({ x: snap(Number(p.x) + direction.x * spacing), y: snap(Number(p.y) + direction.y * spacing) }, ignoreIds);
   }
   const n = network?.buses?.length || 0;
-  return { x: 220 + n * 300, y: n % 2 ? 480 : 320 };
+  return avoidBusOverlap({ x: 560 + (n % 3 - 1) * BUS_HORIZONTAL_SPACING, y: 270 + Math.floor(n / 3) * BUS_VERTICAL_SPACING }, ignoreIds);
+}
+function terminalDirection(terminal) {
+  if (terminal === "left") return { x:-1, y:0 };
+  if (terminal === "right") return { x:1, y:0 };
+  if (terminal === "top" || terminal === "input") return { x:0, y:-1 };
+  return { x:0, y:1 };
+}
+function overlapsBusPosition(p, ignoreIds=[]) {
+  const ignore = new Set(Array.isArray(ignoreIds) ? ignoreIds : [ignoreIds].filter(Boolean));
+  return network?.buses?.some(bus => {
+    if (ignore.has(bus.id)) return false;
+    const q = layout?.buses?.[bus.id];
+    if (!q) return false;
+    return Math.abs(num(q.x) - p.x) < BUS_WIDTH + 86 && Math.abs(num(q.y) - p.y) < 156;
+  });
+}
+function avoidBusOverlap(pos, ignoreIds=[]) {
+  let p = { x:snap(num(pos.x)), y:snap(num(pos.y)) };
+  if (!overlapsBusPosition(p, ignoreIds)) return p;
+  const stepX = 308, stepY = 196;
+  for (let ring=1; ring<=8; ring++) {
+    const candidates = [
+      { x:p.x + stepX * ring, y:p.y },
+      { x:p.x - stepX * ring, y:p.y },
+      { x:p.x, y:p.y + stepY * ring },
+      { x:p.x + stepX * ring, y:p.y + stepY * ring },
+      { x:p.x - stepX * ring, y:p.y + stepY * ring },
+      { x:p.x, y:p.y - stepY * ring }
+    ].map(c => ({ x:snap(c.x), y:snap(c.y) }));
+    const open = candidates.find(c => !overlapsBusPosition(c, ignoreIds));
+    if (open) return open;
+  }
+  return p;
+}
+function resolveLayoutOverlaps() {
+  if (!network?.buses?.length) return;
+  const placed = [];
+  for (const bus of network.buses) {
+    let p = layout.buses[bus.id] || nextBusPosition();
+    p = { x:snap(num(p.x)), y:snap(num(p.y)) };
+    let guard = 0;
+    while (placed.some(q => Math.abs(q.x - p.x) < BUS_WIDTH + 86 && Math.abs(q.y - p.y) < 156) && guard < 40) {
+      const direction = guard % 3 === 0 ? 1 : guard % 3 === 1 ? -1 : 0;
+      p = { x:snap(p.x + direction * 308), y:snap(p.y + (direction ? 0 : 196)) };
+      guard++;
+    }
+    layout.buses[bus.id] = p;
+    placed.push({ id:bus.id, ...p });
+  }
+}
+function connectedBusIdsFrom(startId, blockedId) {
+  const out = new Set();
+  const queue = [startId];
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id || id === blockedId || out.has(id)) continue;
+    out.add(id);
+    for (const br of network.branches || []) {
+      if (br.from === id && br.to !== blockedId && !out.has(br.to)) queue.push(br.to);
+      if (br.to === id && br.from !== blockedId && !out.has(br.from)) queue.push(br.from);
+    }
+  }
+  return [...out];
+}
+function shiftBuses(ids, dx, dy) {
+  for (const id of ids) {
+    if (!layout.buses[id]) continue;
+    layout.buses[id] = { x:snap(num(layout.buses[id].x) + dx), y:snap(num(layout.buses[id].y) + dy) };
+  }
+}
+function seriesInsertPositions(fromId, toId, slotCount) {
+  const a = busPos(fromId), b = busPos(toId);
+  const vertical = Math.abs(b.y - a.y) >= Math.abs(b.x - a.x);
+  const gap = vertical ? INSERT_SPACING : BUS_HORIZONTAL_SPACING;
+  const downstream = connectedBusIdsFrom(toId, fromId);
+  if (vertical) {
+    const sign = b.y >= a.y ? 1 : -1;
+    const requiredToY = a.y + sign * gap * (slotCount + 1);
+    const deltaY = sign > 0 ? Math.max(0, requiredToY - b.y) : Math.min(0, requiredToY - b.y);
+    if (deltaY) shiftBuses(downstream, 0, deltaY);
+    return Array.from({ length:slotCount }, (_, i) => ({ x:snap(a.x), y:snap(a.y + sign * gap * (i + 1)) }));
+  }
+  const sign = b.x >= a.x ? 1 : -1;
+  const requiredToX = a.x + sign * gap * (slotCount + 1);
+  const deltaX = sign > 0 ? Math.max(0, requiredToX - b.x) : Math.min(0, requiredToX - b.x);
+  if (deltaX) shiftBuses(downstream, deltaX, 0);
+  return Array.from({ length:slotCount }, (_, i) => ({ x:snap(a.x + sign * gap * (i + 1)), y:snap(a.y) }));
 }
 function electricalCase() {
   const copy = JSON.parse(JSON.stringify(network || {}));
@@ -850,6 +989,7 @@ function voltageField(b) {
 }
 function busEditor(b) { return field("Name", "name", b.name) + voltageField(b) + field("Notes", "notes", b.notes || ""); }
 function branchEditor(br) {
+  if ((br.kind || "feeder") === "transformer") return transformerEditor(br);
   return selectField("Kind", "kind", br.kind || "feeder", ["feeder","transformer"])
     + field("Name", "name", br.name)
     + `<div class="grid-2">${busSelect("From", "from", br.from)}${busSelect("To", "to", br.to)}</div>`
@@ -863,6 +1003,26 @@ function branchEditor(br) {
     + `<div class="grid-2">${field("Z0 R", "z0_pu.r", br.z0_pu?.r, "number", "pu")}${field("Z0 X", "z0_pu.x", br.z0_pu?.x, "number", "pu")}</div>`
     + field("Length", "length_m", br.length_m || "", "number", "m")
     + field("Notes", "notes", br.notes || "");
+}
+function transformerEditor(br) {
+  syncTransformerDerivedValues(br, false);
+  return selectField("Kind", "kind", br.kind || "transformer", ["feeder","transformer"])
+    + field("Name", "name", br.name)
+    + `<div class="grid-2">${busSelect("Primary bus", "from", br.from)}${busSelect("Secondary bus", "to", br.to)}</div>`
+    + `<div class="grid-2">${selectField("State", "state", br.state || (br.enabled === false ? "normally_open" : "normally_closed"), ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}${routeModeField(br)}</div>`
+    + `<div class="grid-2">${selectField("Primary", "primary_connection", br.primary_connection || "delta", ["delta","grounded_wye","wye","grounding"])}${selectField("Secondary", "secondary_connection", br.secondary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</div>`
+    + `<div class="grid-2">${field("Rating", "rating_kva", fmt(transformerKva(br), 0), "number", "kVA")}${field("%Z", "impedance_percent", fmt(transformerPercentZ(br), 2), "number", "%")}</div>`
+    + transformerRatingTable(br)
+    + `<div class="grid-2">${field("Vector shift", "vector_shift_deg", br.vector_shift_deg ?? defaultVectorShift(br), "number", "deg")}${field("X/R", "xr_ratio", br.xr_ratio || 7, "number", "")}</div>`
+    + `${checkboxField("enabled", "enabled", br.enabled !== false)} ${checkboxField("zero sequence path", "has_z0", br.has_z0)}<div style="height:8px"></div>`
+    + field("Notes", "notes", br.notes || "");
+}
+function transformerRatingTable(br) {
+  const rows = [
+    ["Primary", br.from, transformerRatedCurrent(br, br.from)],
+    ["Secondary", br.to, transformerRatedCurrent(br, br.to)]
+  ];
+  return `<table class="mini-table" style="margin:8px 0 10px"><thead><tr><th>Side</th><th>Bus</th><th>Voltage</th><th>Rated A</th></tr></thead><tbody>${rows.map(([side,busId,current]) => `<tr><td>${side}</td><td>${escapeHtml(busLabel(busId))}</td><td>${escapeHtml(voltageLabel(busVoltage(network, busId)))}</td><td class="num">${fmtA(current)}</td></tr>`).join("")}</tbody></table>`;
 }
 function sourceEditor(s) {
   const basic = selectField("Kind", "kind", s.kind || "utility", ["utility","source","load"])
@@ -902,6 +1062,12 @@ function editSelected(path, value, type, quiet=false) {
     normalizeBranchMetadata(obj);
     if (obj.kind === "transformer") obj.vector_shift_deg = defaultVectorShift(obj);
   }
+  if (selected.type === "branch" && obj.kind === "transformer" && ["rating_kva","impedance_percent","xr_ratio"].includes(path)) {
+    syncTransformerDerivedValues(obj, true);
+  }
+  if (selected.type === "branch" && obj.kind === "transformer" && ["from","to"].includes(path)) {
+    syncTransformerDerivedValues(obj, false);
+  }
   if (selected.type === "branch" && ["kind","from","to"].includes(path) && !isVoltageChangingBranch(obj)) {
     syncConnectedBusVoltage(obj.from, busVoltage(network, obj.from));
   }
@@ -920,7 +1086,7 @@ function renderCanvas() {
   svg.innerHTML = branchSvg + sourceSvg + busSvg;
   svg.onpointerdown = startCanvasPan; svg.onpointermove = onCanvasMove; svg.onpointerup = endDrag; svg.onpointerleave = endDrag; svg.onwheel = onCanvasWheel;
   const sub = $("canvasSubtitle");
-  if (sub) sub.textContent = "hover terminals to add connections";
+  if (sub) sub.textContent = "hover bus terminals or cable midpoint to add/insert";
 }
 function busPos(id) {
   ensureLayout();
@@ -935,25 +1101,36 @@ function renderBranch(br) {
   const open = isOpen(br);
   const d = pathD(points);
   const symbol = branchSymbol(br, mid.x, mid.y);
-  const from = terminalOnBranch(points, "from"), to = terminalOnBranch(points, "to");
-  return `<g class="sld-element"><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/><path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}${terminalPlus(from.x, from.y, "branch", br.id, "from")}${terminalPlus(to.x, to.y, "branch", br.id, "to")}<text class="svg-small" x="${mid.x}" y="${mid.y-30}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text></g>`;
+  const insertPoint = polylinePointAt(points, .62);
+  const insert = kind === "feeder" ? terminalPlus(insertPoint.x, insertPoint.y, "branch", br.id, "mid") : "";
+  const transformerMeta = kind === "transformer" ? `<text class="svg-small" x="${mid.x}" y="${mid.y+42}" text-anchor="middle">${fmt(transformerKva(br),0)} kVA / ${fmt(transformerPercentZ(br),2)}%Z</text>` : "";
+  return `<g class="sld-element"><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/><path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}${insert}<text class="svg-small" x="${mid.x}" y="${mid.y-30}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text>${transformerMeta}</g>`;
 }
 function branchPoints(br) {
-  const a = busPos(br.from), b = busPos(br.to);
+  const a = branchTerminalAnchor(br, br.from, br.to), b = branchTerminalAnchor(br, br.to, br.from);
   const mode = layout?.routeModes?.[br.id] || "orthogonal";
   if (mode === "direct") return [{x:a.x,y:a.y}, {x:b.x,y:b.y}];
   if (Array.isArray(layout?.routes?.[br.id]) && layout.routes[br.id].length) return [{x:a.x,y:a.y}, ...layout.routes[br.id].map(p => ({x:num(p.x), y:num(p.y)})), {x:b.x,y:b.y}];
+  if (Math.abs(b.y - a.y) >= Math.abs(b.x - a.x)) {
+    const my = snap((a.y + b.y) / 2);
+    return Math.abs(a.x - b.x) < 1 ? [{x:a.x,y:a.y}, {x:b.x,y:b.y}] : [{x:a.x,y:a.y}, {x:a.x,y:my}, {x:b.x,y:my}, {x:b.x,y:b.y}];
+  }
   const mx = snap((a.x + b.x) / 2);
-  return [{x:a.x,y:a.y}, {x:mx,y:a.y}, {x:mx,y:b.y}, {x:b.x,y:b.y}];
+  return Math.abs(a.y - b.y) < 1 ? [{x:a.x,y:a.y}, {x:b.x,y:b.y}] : [{x:a.x,y:a.y}, {x:mx,y:a.y}, {x:mx,y:b.y}, {x:b.x,y:b.y}];
 }
 function pathD(points) { return points.map((p,i) => `${i ? "L" : "M"}${fmt(p.x,1)} ${fmt(p.y,1)}`).join(" "); }
-function terminalOnBranch(points, end) {
-  const terminalOffset = 30;
-  const a = end === "to" ? points.at(-1) : points[0];
-  const b = end === "to" ? points.at(-2) : points[1];
-  if (!a || !b) return a || { x:0, y:0 };
-  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  return { x:a.x + (b.x - a.x) * terminalOffset / len, y:a.y + (b.y - a.y) * terminalOffset / len };
+function busTerminalPoint(id, terminal) {
+  const p = busPos(id);
+  if (terminal === "top" || terminal === "input") return { x:p.x, y:p.y - 44 };
+  if (terminal === "left") return { x:p.x - BUS_WIDTH / 2 - 30, y:p.y };
+  if (terminal === "right") return { x:p.x + BUS_WIDTH / 2 + 30, y:p.y };
+  return { x:p.x, y:p.y + 46 };
+}
+function branchTerminalAnchor(br, busId, otherId) {
+  const a = busPos(busId), b = busPos(otherId);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  if (Math.abs(dy) >= Math.abs(dx)) return busTerminalPoint(busId, dy >= 0 ? "bottom" : "top");
+  return busTerminalPoint(busId, dx >= 0 ? "right" : "left");
 }
 function polylineMidpoint(points) {
   let total = 0;
@@ -965,6 +1142,17 @@ function polylineMidpoint(points) {
     acc += len;
   }
   return points[0] || {x:0,y:0};
+}
+function polylinePointAt(points, ratio=.5) {
+  let total = 0;
+  for (let i=1;i<points.length;i++) total += Math.hypot(points[i].x-points[i-1].x, points[i].y-points[i-1].y);
+  let acc = 0, target = total * ratio;
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1], b = points[i], len = Math.hypot(b.x-a.x, b.y-a.y);
+    if (acc + len >= target) { const t = len ? (target - acc) / len : 0; return {x:a.x + (b.x-a.x)*t, y:a.y + (b.y-a.y)*t}; }
+    acc += len;
+  }
+  return points.at(-1) || {x:0,y:0};
 }
 function branchSymbol(br, x, y) {
   const kind = br.kind || "feeder";
@@ -992,10 +1180,10 @@ function stateLabel(v) {
 }
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
 function renderSource(s) {
-  const p = busPos(s.bus);
   const kind = s.kind || "utility";
-  const sx = p.x;
-  const sy = kind === "load" ? p.y + 118 : p.y - 118;
+  const anchor = busTerminalPoint(s.bus, kind === "load" ? "bottom" : "top");
+  const sx = anchor.x;
+  const sy = kind === "load" ? anchor.y + 96 : anchor.y - 96;
   const terminalY = kind === "load" ? sy - 20 : sy + 20;
   const sel = selected.type === "source" && selected.id === s.id;
   const label = kind === "load" ? "LOAD" : kind === "source" ? "SRC" : "UTIL";
@@ -1003,17 +1191,18 @@ function renderSource(s) {
   const symbol = kind === "load"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
     : `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="#263241" stroke-width="1.6"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="#263241" stroke-width="1.3"/>`;
-  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${p.x}" y1="${p.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${kind === "load" ? sy+31 : sy-26}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
+  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${kind === "load" ? sy+31 : sy-26}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
   const sel = selected.type === "bus" && selected.id === b.id;
   const r = busReport(b.id);
-  const w = 190;
+  const w = BUS_WIDTH;
   const x1 = p.x - w / 2, x2 = p.x + w / 2;
-  const chip = r ? `<rect class="fault-chip" x="${p.x-72}" y="${p.y+42}" width="144" height="18"/><text class="fault-chip-text" x="${p.x}" y="${p.y+55}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
-  const selection = sel ? `<rect class="bus-selection" x="${x1-18}" y="${p.y-48}" width="${w+36}" height="${r ? 124 : 86}"/>` : "";
-  return `<g class="sld-element" data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${x1-28}" y="${p.y-52}" width="${w+56}" height="${r ? 132 : 96}"/><text class="svg-label" x="${p.x}" y="${p.y-27}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><line class="busbar" x1="${x1}" y1="${p.y}" x2="${x2}" y2="${p.y}"/><line class="bus-tick" x1="${x1}" y1="${p.y-8}" x2="${x1}" y2="${p.y+8}"/><line class="bus-tick" x1="${x2}" y1="${p.y-8}" x2="${x2}" y2="${p.y+8}"/><text class="svg-small" x="${p.x}" y="${p.y+24}" text-anchor="middle">${escapeHtml(voltageLabel(b.kv_ll))}</text>${chip}${selection}${terminalPlus(x1-22, p.y, "bus", b.id, "left")}${terminalPlus(x2+22, p.y, "bus", b.id, "right")}${terminalPlus(p.x, p.y+36, "bus", b.id, "bottom")}</g>`;
+  const top = busTerminalPoint(b.id, "top"), bottom = busTerminalPoint(b.id, "bottom"), left = busTerminalPoint(b.id, "left"), right = busTerminalPoint(b.id, "right");
+  const chip = r ? `<rect class="fault-chip" x="${p.x-72}" y="${p.y+66}" width="144" height="18"/><text class="fault-chip-text" x="${p.x}" y="${p.y+79}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
+  const selection = sel ? `<rect class="bus-selection" x="${x1-36}" y="${p.y-62}" width="${w+72}" height="${r ? 152 : 122}"/>` : "";
+  return `<g class="sld-element" data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${x1-44}" y="${p.y-66}" width="${w+88}" height="${r ? 160 : 130}"/><text class="svg-label" x="${p.x}" y="${p.y-27}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><line class="busbar" x1="${x1}" y1="${p.y}" x2="${x2}" y2="${p.y}"/><line class="bus-tick" x1="${x1}" y1="${p.y-8}" x2="${x1}" y2="${p.y+8}"/><line class="bus-tick" x1="${x2}" y1="${p.y-8}" x2="${x2}" y2="${p.y+8}"/><line class="bus-tick" x1="${top.x}" y1="${top.y+11}" x2="${p.x}" y2="${p.y-7}"/><line class="bus-tick" x1="${bottom.x}" y1="${p.y+7}" x2="${bottom.x}" y2="${bottom.y-11}"/><text class="svg-small" x="${p.x}" y="${p.y+24}" text-anchor="middle">${escapeHtml(voltageLabel(b.kv_ll))}</text>${chip}${selection}${terminalPlus(top.x, top.y, "bus", b.id, "top")}${terminalPlus(left.x, left.y, "bus", b.id, "left")}${terminalPlus(right.x, right.y, "bus", b.id, "right")}${terminalPlus(bottom.x, bottom.y, "bus", b.id, "bottom")}</g>`;
 }
 function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
 function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
@@ -1031,25 +1220,42 @@ function terminalBusId(type, id, terminal) {
 }
 function showAddMenu(evt, type, id, terminal) {
   evt.stopPropagation();
-  const busId = terminalBusId(type, id, terminal);
-  const bus = network.buses.find(b => b.id === busId);
-  if (!bus) return;
   const wrap = $("oneLine").closest(".canvas-wrap").getBoundingClientRect();
   const menu = $("connectionMenu");
   menu.style.left = `${evt.clientX - wrap.left + 10}px`;
   menu.style.top = `${evt.clientY - wrap.top + 10}px`;
-  menu.innerHTML = `<div class="menu-title">${escapeHtml(bus.name || bus.id)} terminal</div><button onclick="menuAddConnection('conductor','${jsArg(bus.id)}')">Add conductor to new bus</button><button onclick="menuAddConnection('transformer','${jsArg(bus.id)}')">Add transformer to 600 V bus</button><button onclick="menuAddConnection('load','${jsArg(bus.id)}')">Add load terminal</button>`;
+  if (type === "branch") {
+    const br = network.branches.find(x => x.id === id);
+    if (!br || (br.kind || "feeder") !== "feeder") return;
+    menu.innerHTML = `<div class="menu-title">Insert in ${escapeHtml(br.name || br.id)}</div><button onclick="menuInsertOnBranch('bus','${jsArg(br.id)}')">Insert bus section</button><button onclick="menuInsertOnBranch('transformer','${jsArg(br.id)}')">Insert transformer</button>`;
+    menu.classList.remove("hidden");
+    return;
+  }
+  const busId = terminalBusId(type, id, terminal);
+  const bus = network.buses.find(b => b.id === busId);
+  if (!bus) return;
+  menu.innerHTML = `<div class="menu-title">${escapeHtml(bus.name || bus.id)} ${terminalName(terminal)}</div><button onclick="menuAddConnection('conductor','${jsArg(bus.id)}','${jsArg(terminal)}')">Add cable to new bus</button><button onclick="menuAddConnection('transformer','${jsArg(bus.id)}','${jsArg(terminal)}')">Add transformer to 600 V bus</button><button onclick="menuAddConnection('load','${jsArg(bus.id)}','${jsArg(terminal)}')">Add load terminal</button>`;
   menu.classList.remove("hidden");
+}
+function terminalName(terminal) {
+  if (terminal === "top" || terminal === "input") return "input terminal";
+  if (terminal === "left" || terminal === "right") return `${terminal} extension`;
+  return "output terminal";
 }
 function hideAddMenu() {
   const menu = $("connectionMenu");
   if (menu) menu.classList.add("hidden");
 }
-function menuAddConnection(kind, busId) {
+function menuAddConnection(kind, busId, terminal="bottom") {
   hideAddMenu();
-  if (kind === "transformer") return addTransformerFromBus(busId);
-  if (kind === "load") return addLoadAtBus(busId);
-  return addConductorFromBus(busId);
+  if (kind === "transformer") return addTransformerFromBus(busId, terminal);
+  if (kind === "load") return addLoadAtBus(busId, terminal);
+  return addConductorFromBus(busId, terminal);
+}
+function menuInsertOnBranch(kind, branchId) {
+  hideAddMenu();
+  if (kind === "transformer") return insertTransformerOnBranch(branchId);
+  return insertBusOnBranch(branchId);
 }
 function jsArg(value) {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
@@ -1095,9 +1301,17 @@ function renderResults() {
 function renderSchedule() {
   const rows = [];
   for (const b of network.buses) rows.push(`<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`);
-  for (const br of network.branches) rows.push(`<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(busLabel(br.from))} to ${escapeHtml(busLabel(br.to))}</td><td>${br.rating_a ? fmt(br.rating_a,0) + " A" : ""}</td></tr>`);
+  for (const br of network.branches) rows.push(`<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`);
   for (const s of network.sources) rows.push(`<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`);
   $("scheduleTable").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="4" class="muted">No equipment defined.</td></tr>`;
+}
+function branchConnectionText(br) {
+  if ((br.kind || "") !== "transformer") return `${busLabel(br.from)} to ${busLabel(br.to)}`;
+  return `${busLabel(br.from)} (${voltageLabel(busVoltage(network, br.from))}) to ${busLabel(br.to)} (${voltageLabel(busVoltage(network, br.to))})`;
+}
+function branchRatingText(br) {
+  if ((br.kind || "") !== "transformer") return br.rating_a ? `${fmt(br.rating_a,0)} A` : "";
+  return `${fmt(transformerKva(br),0)} kVA / ${fmt(transformerPercentZ(br),2)}%Z / Pri ${fmtA(transformerRatedCurrent(br, br.from))} A / Sec ${fmtA(transformerRatedCurrent(br, br.to))} A`;
 }
 function renderDutyComparison() {
   const rows = [];
@@ -1202,8 +1416,9 @@ function addBus() {
   const sourceBus = network.buses.find(b => b.id === anchor);
   network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: sourceBus?.kv_ll || DEFAULT_SECONDARY_KV });
   ensureLayout();
-  layout.buses[id] = nextBusPosition(anchor);
+  layout.buses[id] = nextBusPosition(anchor, "bottom", id);
   selectItem("bus", id);
+  fitCanvas();
   modelChanged(true);
 }
 function selectedBusId() {
@@ -1222,33 +1437,41 @@ function addTransformer() { addTransformerFromBus(selectedBusId()); }
 function addFeeder() { addConductorFromBus(selectedBusId()); }
 function addFeederToNewBus() { addConductorFromBus(selectedBusId()); }
 function addLoad() { addLoadAtBus(selectedBusId()); }
-function addConductorFromBus(from) {
+function conductorBranch(id, from, to, name="Conductor") {
+  return branchWithMetadata({ id, kind:"feeder", name, from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 });
+}
+function addConductorFromBus(from, terminal="bottom") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
   const fromBus = network.buses.find(b => b.id === from) || network.buses[0];
   const to = nextId("bus", network.buses);
   network.buses.push({ id: to, name: `Bus ${network.buses.length+1}`, kv_ll: fromBus.kv_ll || DEFAULT_SECONDARY_KV });
   ensureLayout();
-  const p = busPos(from);
-  layout.buses[to] = { x: snap(p.x + 340), y: snap(p.y + (network.buses.length % 2 ? 170 : -170)) };
+  layout.buses[to] = nextBusPosition(from, terminal, to);
   const id = nextId("fdr", network.branches);
-  network.branches.push(branchWithMetadata({ id, kind:"feeder", name:"Conductor", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }));
+  network.branches.push(conductorBranch(id, from, to));
   layout.routeModes[id] = "orthogonal";
   selectItem("branch", id);
+  fitCanvas();
   modelChanged(true);
 }
-function addTransformerFromBus(from) {
+function addTransformerFromBus(from, terminal="bottom") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
+  const ratingKva = 2500;
+  const impedancePercent = 5.75;
+  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
   const to = nextId("bus", network.buses);
   network.buses.push({ id: to, name: `600 V Bus ${network.buses.length+1}`, kv_ll: DEFAULT_SECONDARY_KV });
   ensureLayout();
-  const p = busPos(from);
-  layout.buses[to] = { x: snap(p.x + 340), y: snap(p.y) };
+  layout.buses[to] = nextBusPosition(from, terminal, to);
   const id = nextId("tx", network.branches);
-  network.branches.push(branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:2400, length_m:0, notes:"Default secondary voltage is 600 V." }));
+  const branch = branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
+  syncTransformerDerivedValues(branch, false);
+  network.branches.push(branch);
   layout.routeModes[id] = "orthogonal";
   selectItem("branch", id);
+  fitCanvas();
   modelChanged(true);
 }
 function addLoadAtBus(bus) {
@@ -1258,6 +1481,57 @@ function addLoadAtBus(bus) {
   const id = nextId("load", network.sources);
   network.sources.push({ id, kind:"load", name:"Load", bus, z1_pu:{r:0,x:1}, z2_pu:{r:0,x:1}, z0_pu:{r:0,x:1}, has_z0:false, enabled:false, state:"out_of_service", rating:"load terminal" });
   selectItem("source", id);
+  modelChanged(true);
+}
+function insertBusOnBranch(branchId) {
+  ensureLayout();
+  const br = network.branches.find(x => x.id === branchId);
+  if (!br || (br.kind || "feeder") !== "feeder") return;
+  const oldTo = br.to;
+  const [insertPos] = seriesInsertPositions(br.from, oldTo, 1);
+  const busId = nextId("bus", network.buses);
+  network.buses.push({ id:busId, name:`Bus Section ${network.buses.length+1}`, kv_ll:busVoltage(network, br.from) });
+  layout.buses[busId] = insertPos;
+  br.to = busId;
+  delete layout.routes[br.id];
+  layout.routeModes[br.id] = "orthogonal";
+  const outId = nextId("fdr", network.branches);
+  network.branches.push(conductorBranch(outId, busId, oldTo));
+  layout.routeModes[outId] = "orthogonal";
+  syncConnectedBusVoltage(busId, busVoltage(network, br.from));
+  selectItem("branch", outId);
+  fitCanvas();
+  modelChanged(true);
+}
+function insertTransformerOnBranch(branchId) {
+  ensureLayout();
+  const br = network.branches.find(x => x.id === branchId);
+  if (!br || (br.kind || "feeder") !== "feeder") return;
+  const oldTo = br.to;
+  const [primaryPos, secondaryPos] = seriesInsertPositions(br.from, oldTo, 2);
+  const primaryBus = nextId("bus", network.buses);
+  network.buses.push({ id:primaryBus, name:`Transformer Primary ${network.buses.length+1}`, kv_ll:busVoltage(network, br.from) });
+  layout.buses[primaryBus] = primaryPos;
+  const secondaryBus = nextId("bus", network.buses);
+  network.buses.push({ id:secondaryBus, name:`600 V Bus ${network.buses.length+1}`, kv_ll:DEFAULT_SECONDARY_KV });
+  layout.buses[secondaryBus] = secondaryPos;
+  br.to = primaryBus;
+  delete layout.routes[br.id];
+  layout.routeModes[br.id] = "orthogonal";
+  const ratingKva = 2500;
+  const impedancePercent = 5.75;
+  const z = impedanceFromPercent(ratingKva, impedancePercent, 7);
+  const txId = nextId("tx", network.branches);
+  const transformer = branchWithMetadata({ id:txId, kind:"transformer", name:"Transformer", from:primaryBus, to:secondaryBus, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{...z}, z2_pu:{...z}, z0_pu:{...z}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
+  syncTransformerDerivedValues(transformer, false);
+  network.branches.push(transformer);
+  layout.routeModes[txId] = "orthogonal";
+  const outId = nextId("fdr", network.branches);
+  network.branches.push(conductorBranch(outId, secondaryBus, oldTo));
+  layout.routeModes[outId] = "orthogonal";
+  syncConnectedBusVoltage(secondaryBus, DEFAULT_SECONDARY_KV);
+  selectItem("branch", txId);
+  fitCanvas();
   modelChanged(true);
 }
 function nextId(prefix, arr) { let i = arr.length + 1; while (arr.find(x => x.id === `${prefix}_${i}`)) i++; return `${prefix}_${i}`; }
@@ -1300,7 +1574,7 @@ function reportToCsv(r) {
 function reportToHtml() {
   if (!report) return "";
   const resultRows = report.buses.flatMap(b => b.faults.map(f => `<tr><td>${escapeHtml(b.bus)}</td><td>${fmt(b.kv_ll,3)}</td><td>${f.kind}</td><td>${fmt(f.available_sym_ka,3)}</td><td>${fmt(f.peak_asym_ka,3)}</td><td>${fmt(f.asym_rms_ka,3)}</td><td>${f.x_over_r === null ? "" : fmt(f.x_over_r,2)}</td><td>${f.ground_return_ka === null ? "" : fmt(f.ground_return_ka,3)}</td></tr>`)).join("");
-  const scheduleRows = [...network.buses.map(b => `<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`), ...network.branches.map(br => `<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(busLabel(br.from))} to ${escapeHtml(busLabel(br.to))}</td><td>${br.rating_a ? fmt(br.rating_a,0) + " A" : ""}</td></tr>`), ...network.sources.map(s => `<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`)].join("");
+  const scheduleRows = [...network.buses.map(b => `<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`), ...network.branches.map(br => `<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`), ...network.sources.map(s => `<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`)].join("");
   const warningRows = (report.warnings || []).map(w => `<li>${escapeHtml(w)}</li>`).join("") || "<li>No calculation warnings.</li>";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(network.project?.name || "FaultCalc report")}</title><style>body{font-family:Arial,sans-serif;color:#111827;margin:32px}h1{font-size:22px}h2{font-size:16px;margin-top:24px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#e5e7eb}.num{text-align:right}.meta{color:#4b5563}@media print{body{margin:18mm}}</style></head><body><h1>${escapeHtml(network.project?.name || "FaultCalc report")}</h1><p class="meta">Project ${escapeHtml(network.project?.number || "")} · Engineer ${escapeHtml(network.project?.engineer || "")} · Revision ${escapeHtml(network.project?.revision || "")}</p><p>${escapeHtml(network.project?.description || "")}</p><h2>Summary</h2><table><tr><th>Base MVA</th><th>Frequency</th><th>Prefault</th><th>Max 3PH</th><th>Max SLG</th></tr><tr><td>${fmt(report.base_mva,3)}</td><td>${fmt(report.frequency_hz,2)} Hz</td><td>${fmt(report.prefault_voltage_pu,3)} pu</td><td>${fmt(report.summary.max_3ph_ka,3)} kA at ${escapeHtml(report.summary.max_3ph_bus)}</td><td>${fmt(report.summary.max_slg_ka,3)} kA at ${escapeHtml(report.summary.max_slg_bus)}</td></tr></table><h2>Fault Results</h2><table><thead><tr><th>Bus</th><th>kV</th><th>Fault</th><th>Sym kA</th><th>Peak kA</th><th>Asym RMS kA</th><th>X/R</th><th>Ground kA</th></tr></thead><tbody>${resultRows}</tbody></table><h2>Equipment Schedule</h2><table><thead><tr><th>Type</th><th>Name</th><th>Connection</th><th>Rating</th></tr></thead><tbody>${scheduleRows}</tbody></table><h2>Warnings</h2><ul>${warningRows}</ul><h2>Method Appendix</h2><p>Calculations use per-unit sequence networks. Sources are shunts behind sequence impedance, branches are series sequence impedances, and each bus is solved for driving-point Thevenin impedance.</p><p>3PH: I = V / (Z1 + Zf). SLG: Ia = 3V / (Z1 + Z2 + Z0 + 3Zf). LL: line current = sqrt(3) * |V / (Z1 + Z2 + Zf)|. DLG uses the negative and zero sequence parallel path and reconstructs phase currents.</p><p>Fault impedance is converted from ohms with Zbase = kV^2 / MVA. Reported kA uses Ibase = MVA / (sqrt(3) * kV). This report does not include proprietary IEEE or ANSI multiplying-factor tables.</p></body></html>`;
 }
@@ -1325,7 +1599,7 @@ function fallbackSample() {
   };
 }
 
-window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection;
+window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch;
 boot();
 </script>
 </body>
