@@ -122,6 +122,7 @@
     .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
     .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
     .tool-check input { width: auto; }
+    .compact-select { width: auto; min-width: 88px; height: 28px; padding: 4px 28px 4px 7px; font-size: 12px; background-color: rgba(255,255,255,.96); }
     .model-summary { position: absolute; left: 12px; bottom: 36px; width: min(480px, calc(100% - 24px)); z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none; }
     .model-metric { border: 1px solid rgba(151,167,182,.88); background: rgba(255,255,255,.92); padding: 6px 7px; }
     .model-metric .label { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
@@ -154,11 +155,24 @@
     .bus-selection { fill: transparent; stroke: var(--blue); stroke-width: 1.6; stroke-dasharray: 7 5; pointer-events: none; }
     .svg-label { fill: #17212b; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
     .svg-small { fill: #596879; font-size: 10px; pointer-events: none; user-select: none; }
-    .branch-line { stroke: #344254; stroke-width: 2.4; fill: none; }
+    .branch-line { stroke: #344254; stroke-width: 1.4; fill: none; }
     .branch-line.feeder, .branch-line.transformer, .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #344254; }
-    .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
+    .branch-line.open, .conductor-lane.open { stroke-dasharray: 9 8; opacity: .5; }
     .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
     .branch-selected { stroke: var(--blue); stroke-width: 4.5; }
+    .conductor-lane { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; opacity: .96; }
+    .conductor-phase { stroke: #8d5524; }
+    .conductor-neutral { stroke: #667085; }
+    .conductor-ground { stroke: #1f7a4d; }
+    .conductor-bond { stroke: #2b6f9e; stroke-dasharray: 6 5; }
+    .conductor-other { stroke: #6b4e9b; stroke-dasharray: 2 5; }
+    .conductor-label { fill: #253241; font-size: 8.5px; font-weight: 800; pointer-events: none; paint-order: stroke; stroke: rgba(255,255,255,.9); stroke-width: 2.5px; stroke-linejoin: round; }
+    .fault-flow { stroke-dasharray: 14 16; animation: flowDash var(--flow-speed, 1.4s) linear infinite; animation-delay: var(--flow-delay, 0s); filter: drop-shadow(0 0 2px rgba(23,105,170,.25)); }
+    .fault-flow.reverse { animation-direction: reverse; }
+    .fault-flow.paused { animation-play-state: paused; }
+    .vector-map { pointer-events: none; }
+    .vector-chip { fill: rgba(255,255,255,.94); stroke: rgba(38,50,65,.38); stroke-width: 1; }
+    .vector-text { fill: #253241; font-size: 9px; font-weight: 800; pointer-events: none; }
     .equip-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
     .equip-label { fill: #17212b; font-size: 9px; font-weight: 800; pointer-events: none; }
     .source-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
@@ -171,6 +185,10 @@
     .pass { color: var(--green); font-weight: 800; }
     .fail { color: var(--red); font-weight: 800; }
     .route-tools { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+    @keyframes flowDash { to { stroke-dashoffset: -60; } }
+    @media (prefers-reduced-motion: reduce) {
+      .fault-flow { animation: none; }
+    }
     @media (min-width: 761px) and (max-width: 1180px) {
       body { overflow: auto; }
       .app { min-width: 1060px; min-height: 100%; height: auto; grid-template-rows: auto 720px 240px; }
@@ -289,12 +307,16 @@
         <button id="btnCanvasAddUtility" class="small ghost">Add source</button>
         <button id="btnDeleteSelected" class="small danger">Delete</button>
         <span class="tool-sep" aria-hidden="true"></span>
+        <select id="faultViewKind" class="compact-select" aria-label="Fault view"><option>3PH</option><option>SLG</option><option>LL</option><option>DLG</option></select>
+        <select id="faultTargetBus" class="compact-select" aria-label="Fault target bus"></select>
+        <label class="tool-check"><input id="faultAnimate" type="checkbox" checked> Flow</label>
+        <span class="tool-sep" aria-hidden="true"></span>
         <button id="btnZoomOut" class="small ghost">-</button>
         <button id="btnZoomIn" class="small ghost">+</button>
         <button id="btnZoomFit" class="small ghost">Fit</button>
         <label class="tool-check"><input id="snapGrid" type="checkbox" checked> Snap</label>
       </div>
-      <div class="legend"><span>Duty badges: 3PH / SLG</span><span>Dashed: open state</span><span>Yg/D tags: transformer winding</span></div>
+      <div class="legend"><span>A/B/C phase lanes</span><span>N neutral / EGC ground / BOND</span><span>Animated width scales with fault kA</span></div>
       <div class="model-summary" id="modelSummaryPanel"></div>
       <div class="canvas-note"><span>Calculated values are engineering aids only. Validate with the applicable IEEE, ANSI, utility, and equipment data for issued work.</span><span id="saveState">local model ready</span></div>
     </section>
@@ -331,6 +353,7 @@
 
 <script>
 const WASM_BASE64 = "";
+const ASSET_VERSION = "2026-05-16-conductor-flow";
 const $ = (id) => document.getElementById(id);
 const fmt = (v, d=2) => (v === null || v === undefined || Number.isNaN(v)) ? "" : Number(v).toFixed(d);
 const fmtKA = (v) => v ? Number(v).toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : "0.00";
@@ -349,6 +372,10 @@ let pan = null;
 let snapGrid = true;
 const GRID = 28;
 let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
+let faultViewKind = "3PH";
+let faultTargetBus = null;
+let animateFaultFlow = true;
+const DEFAULT_SECONDARY_KV = 0.6;
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout";
 
@@ -369,7 +396,9 @@ async function boot() {
   }
   network = normalizeCase(network);
   loadLayoutForCase();
+  fitCanvas();
   localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(electricalCase()));
+  faultTargetBus = network.buses.at(-1)?.id || network.buses[0]?.id || null;
   selected = { type: "bus", id: network.buses[0]?.id || null };
   syncProjectInputs(); syncStudyInputs(); refreshJson(); render();
   updateCommandState();
@@ -387,7 +416,7 @@ async function bootWasm() {
     if (WASM_BASE64 && !WASM_BASE64.includes("__WASM")) {
       bytes = base64ToBytes(WASM_BASE64);
     } else {
-      const resp = await fetch("faultcalc.wasm");
+      const resp = await fetch(`faultcalc.wasm?v=${ASSET_VERSION}`);
       if (!resp.ok) throw new Error("faultcalc.wasm not found. Run `make wasm` or open the generated standalone file.");
       bytes = new Uint8Array(await resp.arrayBuffer());
     }
@@ -456,6 +485,9 @@ function wireEvents() {
   $("btnCanvasAddFeeder").onclick = addFeederToNewBus;
   $("btnCanvasAddUtility").onclick = addUtility;
   $("btnDeleteSelected").onclick = deleteSelected;
+  $("faultViewKind").onchange = () => { faultViewKind = $("faultViewKind").value; renderCanvas(); };
+  $("faultTargetBus").onchange = () => { faultTargetBus = $("faultTargetBus").value; renderCanvas(); };
+  $("faultAnimate").onchange = () => { animateFaultFlow = $("faultAnimate").checked; renderCanvas(); };
   $("btnZoomIn").onclick = () => zoomAt(0.82);
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
@@ -508,12 +540,54 @@ function normalizeCase(value) {
   next.branches = Array.isArray(next.branches) ? next.branches : [];
   next.sources = Array.isArray(next.sources) ? next.sources : [];
   next.buses.forEach(bus => { delete bus.x; delete bus.y; });
-  next.branches.forEach(branch => { delete branch.route; delete branch.route_mode; });
+  next.branches.forEach(branch => {
+    delete branch.route; delete branch.route_mode;
+    normalizeBranchMetadata(branch);
+  });
   next.base_mva = num(next.base_mva || 100);
   next.frequency_hz = num(next.frequency_hz || 60);
   next.prefault_voltage_pu = num(next.prefault_voltage_pu || 1);
   return next;
 }
+function normalizeBranchMetadata(br) {
+  br.kind = br.kind || "feeder";
+  if (br.kind === "transformer") {
+    br.primary_connection = br.primary_connection || "delta";
+    br.secondary_connection = br.secondary_connection || "grounded_wye";
+    br.vector_shift_deg = Number.isFinite(Number(br.vector_shift_deg)) ? num(br.vector_shift_deg) : defaultVectorShift(br);
+  }
+  br.conductors = normalizeConductorSet(br.conductors, br);
+}
+function normalizeConductorSet(value, br={}) {
+  const fallback = defaultConductorSet(br);
+  const v = value && typeof value === "object" ? value : {};
+  return {
+    phases: conductorLabels(v, "phases", fallback.phases),
+    neutral: conductorLabels(v, "neutral", fallback.neutral),
+    ground: conductorLabels(v, "ground", fallback.ground),
+    bond: conductorLabels(v, "bond", fallback.bond),
+    other: conductorLabels(v, "other", fallback.other)
+  };
+}
+function conductorLabels(obj, key, fallback=[]) {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return [...fallback];
+  const value = obj[key];
+  const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  const cleaned = list.map(v => String(v).trim()).filter(Boolean);
+  return cleaned;
+}
+function defaultConductorSet(br={}) {
+  const neutral = br.kind === "transformer" && (br.secondary_connection || "") === "delta" ? [] : [br.kind === "transformer" ? "X0/N" : "N"];
+  return { phases:["A","B","C"], neutral, ground:["EGC"], bond:["BOND"], other:[] };
+}
+function defaultVectorShift(br) {
+  const pDelta = (br.primary_connection || "") === "delta";
+  const sDelta = (br.secondary_connection || "") === "delta";
+  if (pDelta && !sDelta) return -30;
+  if (!pDelta && sDelta) return 30;
+  return 0;
+}
+function branchWithMetadata(br) { normalizeBranchMetadata(br); return br; }
 function collectLegacyLayout(value) {
   const out = blankLayout();
   let used = false;
@@ -709,7 +783,7 @@ function renderNavigator() {
     return `<div class="list-item ${sel ? "selected" : ""}" onclick="selectItem('${type}','${item.id}')"><div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(sub)}</div></div>`;
   }).join("") || `<div class="muted">No ${currentTab} yet.</div>`;
 }
-function selectItem(type, id) { selected = { type, id }; currentTab = type + "es"; if (type === "bus") currentTab = "buses"; if (type === "branch") currentTab = "branches"; if (type === "source") currentTab = "sources"; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); render(); }
+function selectItem(type, id) { selected = { type, id }; if (type === "bus") faultTargetBus = id; currentTab = type + "es"; if (type === "bus") currentTab = "buses"; if (type === "branch") currentTab = "branches"; if (type === "source") currentTab = "sources"; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); render(); }
 function selectedObj() { if (!selected.id) return null; const arr = selected.type === "bus" ? network.buses : selected.type === "branch" ? network.branches : network.sources; return arr.find(x => x.id === selected.id) || null; }
 function busLabel(id) { const b = network.buses.find(x => x.id === id); return b ? (b.name || b.id) : id; }
 
@@ -738,13 +812,27 @@ function branchEditor(br) {
     + `<div class="grid-2">${busSelect("From", "from", br.from)}${busSelect("To", "to", br.to)}</div>`
     + `<div class="grid-2">${selectField("State", "state", br.state || (br.enabled === false ? "normally_open" : "normally_closed"), ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}${routeModeField(br)}</div>`
     + `<div class="grid-2">${selectField("Primary", "primary_connection", br.primary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}${selectField("Secondary", "secondary_connection", br.secondary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</div>`
+    + `<div class="grid-2">${field("Vector shift", "vector_shift_deg", br.vector_shift_deg ?? defaultVectorShift(br), "number", "deg")}${field("Rating", "rating_a", br.rating_a || "", "number", "A")}</div>`
+    + conductorEditor(br)
     + `<div class="route-tools"><div>${routeField(br)}</div><button class="small ghost" onclick="setOrthogonalRoute()">Auto route</button></div>`
     + `<div class="grid-2">${field("Z1 R", "z1_pu.r", br.z1_pu?.r, "number", "pu")}${field("Z1 X", "z1_pu.x", br.z1_pu?.x, "number", "pu")}</div>`
     + `<div class="grid-2">${field("Z2 R", "z2_pu.r", br.z2_pu?.r, "number", "pu")}${field("Z2 X", "z2_pu.x", br.z2_pu?.x, "number", "pu")}</div>`
     + `${checkboxField("enabled", "enabled", br.enabled !== false)} ${checkboxField("zero sequence path", "has_z0", br.has_z0)}<div style="height:8px"></div>`
     + `<div class="grid-2">${field("Z0 R", "z0_pu.r", br.z0_pu?.r, "number", "pu")}${field("Z0 X", "z0_pu.x", br.z0_pu?.x, "number", "pu")}</div>`
-    + `<div class="grid-2">${field("Rating", "rating_a", br.rating_a || "", "number", "A")}${field("Length", "length_m", br.length_m || "", "number", "m")}</div>`
+    + field("Length", "length_m", br.length_m || "", "number", "m")
     + field("Notes", "notes", br.notes || "");
+}
+function conductorEditor(br) {
+  br.conductors = normalizeConductorSet(br.conductors, br);
+  return `<div class="field"><label>Conductors <span class="unit">comma separated</span></label><div class="grid-2">
+    ${conductorField("Phases", "phases", br.conductors.phases)}
+    ${conductorField("Neutral", "neutral", br.conductors.neutral)}
+    ${conductorField("Ground", "ground", br.conductors.ground)}
+    ${conductorField("Bond", "bond", br.conductors.bond)}
+  </div>${conductorField("Other conductors", "other", br.conductors.other)}</div>`;
+}
+function conductorField(label, group, values) {
+  return `<div class="field" style="margin-bottom:8px"><label>${label}</label><input value="${escapeHtml((values || []).join(", "))}" onchange="editConductorGroup('${group}', this.value)" oninput="editConductorGroup('${group}', this.value, true)"></div>`;
 }
 function sourceEditor(s) {
   return selectField("Kind", "kind", s.kind || "utility", ["utility","generator","motor","inverter","grid"])
@@ -762,11 +850,22 @@ function routeText(id) { return Array.isArray(layout?.routes?.[id]) ? layout.rou
 function editRouteMode(id, value) { layout.routeModes[id] = value; if (value !== "manual") delete layout.routes[id]; layoutChanged(true); renderInspector(); }
 function editRoute(value) { const br = selectedObj(); if (!br || selected.type !== "branch") return; layout.routes[br.id] = value.split(";").map(part => part.trim()).filter(Boolean).map(part => { const [x,y] = part.split(",").map(num); return {x, y}; }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)); layout.routeModes[br.id] = layout.routes[br.id].length ? "manual" : "orthogonal"; layoutChanged(true); renderInspector(); }
 function setOrthogonalRoute() { const br = selectedObj(); if (!br || selected.type !== "branch") return; delete layout.routes[br.id]; layout.routeModes[br.id] = "orthogonal"; layoutChanged(true); renderInspector(); }
+function editConductorGroup(group, value, quiet=false) {
+  const br = selectedObj();
+  if (!br || selected.type !== "branch") return;
+  br.conductors = normalizeConductorSet(br.conductors, br);
+  br.conductors[group] = String(value || "").split(",").map(v => v.trim()).filter(Boolean);
+  modelChanged(!quiet);
+}
 function editSelected(path, value, type, quiet=false) {
   const obj = selectedObj(); if (!obj) return;
   setPath(obj, path, type === "number" ? num(value) : type === "bool" ? !!value : value);
   if (path === "state") syncEnabledFromState(obj);
   if (path === "enabled") obj.state = selected.type === "source" ? (obj.enabled ? "in_service" : "out_of_service") : (obj.enabled ? "normally_closed" : "normally_open");
+  if (selected.type === "branch" && ["kind","primary_connection","secondary_connection"].includes(path)) {
+    normalizeBranchMetadata(obj);
+    if (obj.kind === "transformer") obj.vector_shift_deg = defaultVectorShift(obj);
+  }
   modelChanged(!quiet);
 }
 function setPath(obj, path, value) { const parts = path.split("."); let o = obj; for (let i=0; i<parts.length-1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts.at(-1)] = value; }
@@ -775,13 +874,29 @@ function syncEnabledFromState(obj) { const state = String(obj.state || ""); obj.
 function renderCanvas() {
   const svg = $("oneLine");
   ensureLayout();
-  const defs = "";
-  const branchSvg = network.branches.map(renderBranch).join("");
-  const sourceSvg = network.sources.map(renderSource).join("");
+  renderFaultControls();
+  const flow = buildFaultFlowModel();
+  const defs = `<defs><marker id="faultArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1769aa"/></marker></defs>`;
+  const branchSvg = network.branches.map(br => renderBranch(br, flow)).join("");
+  const sourceSvg = network.sources.map(s => renderSource(s, flow)).join("");
   const busSvg = network.buses.map(renderBus).join("");
   svg.setAttribute("viewBox", `${canvasView.x} ${canvasView.y} ${canvasView.w} ${canvasView.h}`);
   svg.innerHTML = defs + branchSvg + sourceSvg + busSvg;
   svg.onpointerdown = startCanvasPan; svg.onpointermove = onCanvasMove; svg.onpointerup = endDrag; svg.onpointerleave = endDrag; svg.onwheel = onCanvasWheel;
+}
+function renderFaultControls() {
+  if (!network?.buses?.length) faultTargetBus = null;
+  if (faultTargetBus && !network.buses.find(b => b.id === faultTargetBus)) faultTargetBus = null;
+  if (!faultTargetBus) faultTargetBus = network.buses.at(-1)?.id || network.buses[0]?.id || "";
+  const kind = $("faultViewKind"), target = $("faultTargetBus"), animate = $("faultAnimate");
+  if (kind) kind.value = faultViewKind;
+  if (target) {
+    target.innerHTML = network.buses.map(b => `<option value="${b.id}" ${b.id===faultTargetBus?"selected":""}>${escapeHtml(b.name || b.id)}</option>`).join("");
+    target.disabled = !network.buses.length;
+  }
+  if (animate) animate.checked = animateFaultFlow;
+  const sub = $("canvasSubtitle");
+  if (sub) sub.textContent = report ? `${faultViewKind} fault flow at ${busLabel(faultTargetBus)}` : "run study to animate conductor fault current";
 }
 function busPos(id) {
   ensureLayout();
@@ -789,14 +904,16 @@ function busPos(id) {
   const p = layout.buses[id] || { x: 0, y: 0 };
   return b ? {x: Number(p.x)||0, y: Number(p.y)||0, b} : {x:0,y:0,b:null};
 }
-function renderBranch(br) {
+function renderBranch(br, flow) {
   const points = branchPoints(br); const mid = polylineMidpoint(points);
   const sel = selected.type === "branch" && selected.id === br.id;
   const kind = br.kind || "feeder";
   const open = isOpen(br);
   const d = pathD(points);
+  const conductors = renderConductors(br, points, flow);
   const symbol = branchSymbol(br, mid.x, mid.y);
-  return `<g><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/><path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}<text class="svg-small" x="${mid.x}" y="${mid.y-26}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text></g>`;
+  const vector = br.kind === "transformer" ? transformerVectorOverlay(br, mid, flow?.branches?.[br.id]) : "";
+  return `<g><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/>${conductors}<path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}${vector}<text class="svg-small" x="${mid.x}" y="${mid.y-30}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text></g>`;
 }
 function branchPoints(br) {
   const a = busPos(br.from), b = busPos(br.to);
@@ -806,6 +923,83 @@ function branchPoints(br) {
   const mx = snap((a.x + b.x) / 2);
   return [{x:a.x,y:a.y}, {x:mx,y:a.y}, {x:mx,y:b.y}, {x:b.x,y:b.y}];
 }
+function renderConductors(br, points, flow) {
+  br.conductors = normalizeConductorSet(br.conductors, br);
+  const lanes = conductorLanes(br);
+  if (!lanes.length) return "";
+  const branchFlow = flow?.branches?.[br.id] || { ka: 0, direction: 1, phaseShift: 0 };
+  const maxKa = flow?.maxKa || 0;
+  const open = isOpen(br);
+  const showLabels = selected.type === "branch" && selected.id === br.id;
+  const laneGap = Math.max(4.5, Math.min(7.5, 38 / lanes.length));
+  const labelsAt = polylineMidpoint(points);
+  return lanes.map((lane, i) => {
+    const offset = (i - (lanes.length - 1) / 2) * laneGap;
+    const p = offsetPolyline(points, offset);
+    const activeKa = conductorFlowKa(lane, branchFlow, flow);
+    const active = activeKa > 0.001 && !open;
+    const width = active ? faultStrokeWidth(activeKa, maxKa) : conductorBaseWidth(lane.role);
+    const speed = Math.max(.65, 2.2 - Math.min(1.4, activeKa / Math.max(maxKa, 1) * 1.4));
+    const delay = phaseDelaySeconds(lane, branchFlow.phaseShift || 0);
+    const classes = `conductor-lane conductor-${lane.role} ${open ? "open" : ""} ${active ? "fault-flow" : ""} ${branchFlow.direction < 0 ? "reverse" : ""} ${animateFaultFlow ? "" : "paused"}`;
+    const marker = active ? ` marker-end="url(#faultArrow)"` : "";
+    const label = showLabels && lanes.length <= 10 ? `<text class="conductor-label" x="${labelsAt.x + 16}" y="${labelsAt.y + offset + 3}" text-anchor="start">${escapeHtml(lane.label)}</text>` : "";
+    return `<path class="${classes}" d="${pathD(p)}" style="stroke-width:${fmt(width,2)};--flow-speed:${fmt(speed,2)}s;--flow-delay:${fmt(delay,2)}s"${marker}/>${label}`;
+  }).join("");
+}
+function conductorLanes(br) {
+  const c = normalizeConductorSet(br.conductors, br);
+  const phaseAngles = [0, -120, 120];
+  return [
+    ...c.phases.map((label, index) => ({ role:"phase", label, index, angle: phaseAngles[index % 3] })),
+    ...c.neutral.map((label, index) => ({ role:"neutral", label, index, angle: 0 })),
+    ...c.ground.map((label, index) => ({ role:"ground", label, index, angle: 0 })),
+    ...c.bond.map((label, index) => ({ role:"bond", label, index, angle: 0 })),
+    ...c.other.map((label, index) => ({ role:"other", label, index, angle: 0 }))
+  ];
+}
+function offsetPolyline(points, offset) {
+  if (!offset || points.length < 2) return points;
+  return points.map((p, i) => {
+    const normals = [];
+    if (i > 0) normals.push(segmentNormal(points[i-1], p));
+    if (i < points.length - 1) normals.push(segmentNormal(p, points[i+1]));
+    let nx = normals.reduce((sum, n) => sum + n.x, 0);
+    let ny = normals.reduce((sum, n) => sum + n.y, 0);
+    const mag = Math.hypot(nx, ny) || 1;
+    nx /= mag; ny /= mag;
+    return { x:p.x + nx * offset, y:p.y + ny * offset };
+  });
+}
+function segmentNormal(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+  return { x:-dy / len, y:dx / len };
+}
+function conductorFlowKa(lane, branchFlow, flow) {
+  if (!branchFlow?.ka) return 0;
+  const roleFactor = groundRoleFactor(lane, flow?.fault);
+  return branchFlow.ka * roleFactor;
+}
+function groundRoleFactor(lane, fault) {
+  const kind = fault?.kind || faultViewKind;
+  if (lane.role === "phase") {
+    if (kind === "3PH") return 1;
+    if (kind === "SLG") return lane.index === 0 ? 1 : 0;
+    if (kind === "LL" || kind === "DLG") return lane.index === 1 || lane.index === 2 ? 1 : 0;
+    return 1;
+  }
+  if (kind === "SLG" || kind === "DLG") {
+    const groundRatio = fault?.available_sym_ka ? Math.min(1.25, num(fault.ground_return_ka) / Math.max(fault.available_sym_ka, 1e-9)) : 1;
+    if (lane.role === "neutral") return .9 * groundRatio;
+    if (lane.role === "ground") return .65 * groundRatio;
+    if (lane.role === "bond") return .45 * groundRatio;
+    if (lane.role === "other") return .25 * groundRatio;
+  }
+  return 0;
+}
+function conductorBaseWidth(role) { return role === "phase" ? 2.2 : role === "neutral" ? 2.0 : 1.8; }
+function faultStrokeWidth(ka, maxKa) { return Math.min(6.2, Math.max(2.4, 2.1 + 4.0 * Math.sqrt(ka / Math.max(maxKa, 1e-9)))); }
+function phaseDelaySeconds(lane, shiftDeg=0) { return -(((lane.angle || 0) + shiftDeg) / 360) * 1.2; }
 function pathD(points) { return points.map((p,i) => `${i ? "L" : "M"}${fmt(p.x,1)} ${fmt(p.y,1)}`).join(" "); }
 function polylineMidpoint(points) {
   let total = 0;
@@ -843,13 +1037,18 @@ function stateLabel(v) {
   return "closed";
 }
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
-function renderSource(s) {
+function renderSource(s, flow) {
   const p = busPos(s.bus); const sx = p.x, sy = p.y - 92; const sel = selected.type === "source" && selected.id === s.id;
   const label = s.kind === "motor" ? "MTR" : s.kind === "generator" ? "GEN" : s.kind === "inverter" ? "INV" : "UTIL";
   const symbol = s.kind === "utility" || s.kind === "grid"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-25}" y="${sy-14}" width="50" height="28" rx="0"/>`
     : `<circle class="source-symbol ${sel ? "source-selected" : ""}" cx="${sx}" cy="${sy}" r="19"/>`;
-  return `<g onclick="selectItem('source','${s.id}')"><line class="branch-line" x1="${p.x}" y1="${p.y-4}" x2="${sx}" y2="${sy+18}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-28}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text></g>`;
+  const sourceFlow = flow?.sources?.[s.id];
+  const active = sourceFlow?.ka > 0.001 && !isOpen(s);
+  const width = active ? faultStrokeWidth(sourceFlow.ka, flow.maxKa) : 2.2;
+  const classes = `branch-line ${active ? "fault-flow" : ""} ${animateFaultFlow ? "" : "paused"}`;
+  const flowLabel = active ? `<text class="svg-small" x="${sx}" y="${sy+35}" text-anchor="middle">${fmtKA(sourceFlow.ka)} kA</text>` : "";
+  return `<g onclick="selectItem('source','${s.id}')"><line class="${classes}" x1="${p.x}" y1="${p.y-4}" x2="${sx}" y2="${sy+18}" style="stroke-width:${fmt(width,2)};--flow-speed:1.1s"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${sy-28}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${flowLabel}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
@@ -861,6 +1060,102 @@ function renderBus(b) {
 }
 function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
 function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
+function targetFaultResult() {
+  const bus = busReport(faultTargetBus);
+  const fault = bus?.faults?.find(f => f.kind === faultViewKind);
+  return bus && fault ? { bus, fault } : null;
+}
+function buildFaultFlowModel() {
+  const target = targetFaultResult();
+  const model = { branches:{}, sources:{}, maxKa:0, fault:target?.fault || null, targetBus:faultTargetBus };
+  if (!target || !target.fault.available_sym_ka || !faultTargetBus) return model;
+  const targetKv = busKv(faultTargetBus);
+  const candidates = [];
+  for (const source of network.sources.filter(s => !isOpen(s))) {
+    const path = findBranchPath(source.bus, faultTargetBus);
+    if (!path && source.bus !== faultTargetBus) continue;
+    const pathZ = (path || []).reduce((sum, seg) => sum + impedanceMag(seg.branch.z1_pu), impedanceMag(source.z1_pu));
+    candidates.push({ source, path:path || [], weight:1 / Math.max(pathZ, 1e-9) });
+  }
+  const weightTotal = candidates.reduce((sum, p) => sum + p.weight, 0);
+  if (!weightTotal) return model;
+  for (const item of candidates) {
+    const contribution = target.fault.available_sym_ka * item.weight / weightTotal;
+    const sourceKa = currentAtKv(contribution, targetKv, busKv(item.source.bus));
+    model.sources[item.source.id] = { ka:sourceKa };
+    model.maxKa = Math.max(model.maxKa, sourceKa);
+    for (const seg of item.path) {
+      const br = seg.branch;
+      const dir = br.from === seg.from ? 1 : -1;
+      const localKa = currentAtKv(contribution, targetKv, Math.max(busKv(br.from), busKv(br.to), targetKv));
+      const entry = model.branches[br.id] || { ka:0, forward:0, reverse:0, direction:dir, phaseShift:0, vector:null };
+      entry.ka += localKa;
+      if (dir >= 0) entry.forward += localKa; else entry.reverse += localKa;
+      entry.direction = entry.forward >= entry.reverse ? 1 : -1;
+      entry.phaseShift = br.kind === "transformer" ? transformerPhaseShiftForDirection(br, entry.direction) : 0;
+      if (br.kind === "transformer") entry.vector = mergeVectorMap(entry.vector, transformerVectorMap(br, contribution, targetKv));
+      model.branches[br.id] = entry;
+      model.maxKa = Math.max(model.maxKa, localKa, entry.vector?.primaryKa || 0, entry.vector?.secondaryKa || 0);
+    }
+  }
+  return model;
+}
+function findBranchPath(start, target) {
+  if (!start || !target) return null;
+  if (start === target) return [];
+  const nodes = network.buses.map(b => b.id);
+  const dist = Object.fromEntries(nodes.map(id => [id, Infinity]));
+  const prev = {};
+  const open = new Set(nodes);
+  dist[start] = 0;
+  while (open.size) {
+    let current = null, best = Infinity;
+    for (const id of open) if (dist[id] < best) { current = id; best = dist[id]; }
+    if (!current || current === target) break;
+    open.delete(current);
+    for (const br of network.branches.filter(b => !isOpen(b) && (b.from === current || b.to === current))) {
+      const next = br.from === current ? br.to : br.from;
+      if (!open.has(next)) continue;
+      const alt = dist[current] + Math.max(impedanceMag(br.z1_pu), 1e-9);
+      if (alt < dist[next]) {
+        dist[next] = alt;
+        prev[next] = { node:current, branch:br };
+      }
+    }
+  }
+  if (!prev[target]) return null;
+  const path = [];
+  for (let node = target; node !== start;) {
+    const step = prev[node];
+    path.push({ branch:step.branch, from:step.node, to:node });
+    node = step.node;
+  }
+  return path.reverse();
+}
+function busKv(id) { return Math.max(1e-9, num(network.buses.find(b => b.id === id)?.kv_ll)); }
+function impedanceMag(z) { return Math.hypot(num(z?.r), num(z?.x)); }
+function currentAtKv(targetKa, targetKv, localKv) { return targetKa * Math.max(targetKv, 1e-9) / Math.max(localKv, 1e-9); }
+function transformerPhaseShiftForDirection(br, direction=1) { return (direction >= 0 ? 1 : -1) * num(br.vector_shift_deg ?? defaultVectorShift(br)); }
+function transformerVectorMap(br, contributionKa, targetKv) {
+  const primaryKv = busKv(br.from), secondaryKv = busKv(br.to);
+  const primaryKa = currentAtKv(contributionKa, targetKv, primaryKv);
+  const secondaryKa = currentAtKv(contributionKa, targetKv, secondaryKv);
+  return { primaryKa, secondaryKa, ratio:secondaryKv / primaryKv, shift:num(br.vector_shift_deg ?? defaultVectorShift(br)) };
+}
+function mergeVectorMap(a, b) {
+  if (!a) return b;
+  return { primaryKa:a.primaryKa + b.primaryKa, secondaryKa:a.secondaryKa + b.secondaryKa, ratio:b.ratio, shift:b.shift };
+}
+function transformerVectorOverlay(br, mid, branchFlow) {
+  const vector = branchFlow?.vector || transformerVectorMap(br, 0, busKv(br.to));
+  const shift = num(vector.shift);
+  const ratio = Number.isFinite(vector.ratio) ? vector.ratio : busKv(br.to) / busKv(br.from);
+  const text = branchFlow?.ka
+    ? `pri ${fmtKA(vector.primaryKa)} kA / sec ${fmtKA(vector.secondaryKa)} kA / ${fmt(shift,0)}deg`
+    : `Ipri = Isec x ${fmt(ratio,3)} ang ${fmt(-shift,0)}deg`;
+  const w = Math.max(128, text.length * 5.4);
+  return `<g class="vector-map"><rect class="vector-chip" x="${mid.x - w/2}" y="${mid.y + 31}" width="${w}" height="18" rx="2"/><text class="vector-text" x="${mid.x}" y="${mid.y + 44}" text-anchor="middle">${escapeHtml(text)}</text></g>`;
+}
 function startBusDrag(evt, id) { evt.stopPropagation(); selectItem('bus', id); const p = svgPoint(evt); const bp = busPos(id); drag = { id, dx: bp.x - p.x, dy: bp.y - p.y }; }
 function startCanvasPan(evt) { if (evt.target !== $("oneLine")) return; pan = { x: evt.clientX, y: evt.clientY, view: {...canvasView} }; }
 function onCanvasMove(evt) {
@@ -883,7 +1178,7 @@ function fitCanvas() {
   if (!network.buses.length) { canvasView = { x:0, y:0, w:1100, h:620 }; return; }
   ensureLayout();
   const xs = network.buses.map(b => num(layout.buses[b.id]?.x)), ys = network.buses.map(b => num(layout.buses[b.id]?.y));
-  const minX = Math.min(...xs) - 180, maxX = Math.max(...xs) + 180, minY = Math.min(...ys) - 150, maxY = Math.max(...ys) + 180;
+  const minX = Math.min(...xs) - 180, maxX = Math.max(...xs) + 180, minY = Math.min(...ys) - 230, maxY = Math.max(...ys) + 180;
   canvasView = { x:minX, y:minY, w:Math.max(420, maxX-minX), h:Math.max(260, maxY-minY) };
 }
 
@@ -1004,7 +1299,7 @@ function validateLocal() {
 function addBus() {
   const id = nextId("bus", network.buses);
   const anchor = selected.type === "bus" ? selected.id : null;
-  network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: 0.48 });
+  network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: DEFAULT_SECONDARY_KV });
   ensureLayout();
   layout.buses[id] = nextBusPosition(anchor);
   selectItem("bus", id);
@@ -1013,19 +1308,19 @@ function addBus() {
 function addUtility() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses[0].id; const id = nextId("src", network.sources); network.sources.push({ id, kind: "utility", name: "Utility equivalent", bus, z1_pu:{r:.000995,x:.00995}, z2_pu:{r:.000995,x:.00995}, z0_pu:{r:.000995,x:.00995}, has_z0:true, enabled:true, state:"in_service", rating:"500 MVA, X/R 10" }); selectItem("source", id); modelChanged(true); }
 function addMotor() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("mot", network.sources); network.sources.push({ id, kind:"motor", name:"Motor contribution", bus, z1_pu:{r:18,x:95}, z2_pu:{r:18,x:95}, z0_pu:{r:25,x:120}, has_z0:false, enabled:true, state:"in_service", rating:"aggregate" }); selectItem("source", id); modelChanged(true); }
 function addGenerator() { if (!network.buses.length) addBus(); const bus = selected.type === "bus" ? selected.id : network.buses.at(-1).id; const id = nextId("gen", network.sources); network.sources.push({ id, kind:"generator", name:"Synchronous generator", bus, z1_pu:{r:.02,x:.18}, z2_pu:{r:.02,x:.18}, z0_pu:{r:.04,x:.12}, has_z0:true, enabled:true, state:"in_service", rating:"generator subtransient model" }); selectItem("source", id); modelChanged(true); }
-function addTransformer() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("tx", network.branches); network.branches.push({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:1800, length_m:0, notes:"Edit %Z conversion in JSON or use programmatic builder." }); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
-function addFeeder() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("fdr", network.branches); network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
+function addTransformer() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("tx", network.branches); network.branches.push(branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, z1_pu:{r:.543,x:3.795}, z2_pu:{r:.543,x:3.795}, z0_pu:{r:.543,x:3.795}, has_z0:true, enabled:true, rating_a:2400, length_m:0, notes:"Edit %Z conversion in JSON or use programmatic builder." })); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
+function addFeeder() { ensureTwoBuses(); const [from,to] = branchEndpoints(); const id = nextId("fdr", network.branches); network.branches.push(branchWithMetadata({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 })); layout.routeModes[id] = "orthogonal"; selectItem("branch", id); modelChanged(true); }
 function addFeederToNewBus() {
   if (!network.buses.length) { addBus(); return; }
   const from = selected.type === "bus" ? selected.id : network.buses.at(-1).id;
   const fromBus = network.buses.find(b => b.id === from) || network.buses[0];
   const to = nextId("bus", network.buses);
-  network.buses.push({ id: to, name: `Bus ${network.buses.length+1}`, kv_ll: fromBus.kv_ll || 0.48 });
+  network.buses.push({ id: to, name: `Bus ${network.buses.length+1}`, kv_ll: fromBus.kv_ll || DEFAULT_SECONDARY_KV });
   ensureLayout();
   const p = busPos(from);
   layout.buses[to] = { x: snap(p.x + 250), y: snap(p.y + (network.buses.length % 2 ? 115 : -115)) };
   const id = nextId("fdr", network.branches);
-  network.branches.push({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 });
+  network.branches.push(branchWithMetadata({ id, kind:"feeder", name:"Feeder", from, to, state:"normally_closed", z1_pu:{r:.001,x:.003}, z2_pu:{r:.001,x:.003}, z0_pu:{r:.003,x:.009}, has_z0:true, enabled:true, rating_a:400, length_m:30 }));
   layout.routeModes[id] = "orthogonal";
   selectItem("branch", id);
   modelChanged(true);
@@ -1036,21 +1331,21 @@ function addSwitchingBranch(kind, name, state, enabled) {
   ensureTwoBuses();
   const [from,to] = branchEndpoints();
   const id = nextId(kind === "breaker" ? "cb" : "sw", network.branches);
-  network.branches.push({ id, kind, name, from, to, state, z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled, rating_a:1200, length_m:0 });
+  network.branches.push(branchWithMetadata({ id, kind, name, from, to, state, z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled, rating_a:1200, length_m:0 }));
   layout.routeModes[id] = "orthogonal";
   selectItem("branch", id); modelChanged(true);
 }
 function addMainTieMain() {
   const base = nextId("mtm", network.buses);
   const a = `${base}_a`, b = `${base}_b`;
-  network.buses.push({ id:a, name:"Main A Switchboard", kv_ll:.48 });
-  network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:.48 });
+  network.buses.push({ id:a, name:"Main A Switchboard", kv_ll:DEFAULT_SECONDARY_KV });
+  network.buses.push({ id:b, name:"Main B Switchboard", kv_ll:DEFAULT_SECONDARY_KV });
   ensureLayout();
   const y = 390 + network.buses.length * 12;
   layout.buses[a] = { x:260, y };
   layout.buses[b] = { x:620, y };
   const tie = nextId("tie", network.branches);
-  network.branches.push({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 });
+  network.branches.push(branchWithMetadata({ id:tie, kind:"tie", name:"Tie breaker", from:a, to:b, state:"normally_open", z1_pu:{r:.00001,x:.00003}, z2_pu:{r:.00001,x:.00003}, z0_pu:{r:.00003,x:.00009}, has_z0:true, enabled:false, rating_a:2000, length_m:0 }));
   layout.routeModes[tie] = "orthogonal";
   network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility A", bus:a, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service A" });
   network.sources.push({ id:nextId("src", network.sources), kind:"utility", name:"Utility B", bus:b, z1_pu:{r:.001,x:.01}, z2_pu:{r:.001,x:.01}, z0_pu:{r:.001,x:.01}, has_z0:true, enabled:true, state:"in_service", rating:"utility service B" });
@@ -1086,9 +1381,9 @@ function autoLayout() {
   fitCanvas();
 }
 
-async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); loadLayoutForCase(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
+async function importCase(evt) { const f = evt.target.files[0]; if (!f) return; const text = await f.text(); try { network = normalizeCase(JSON.parse(text)); loadLayoutForCase(); fitCanvas(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "Import failed: " + err.message); } finally { evt.target.value = ""; } }
 function refreshJson(overwrite=true) { if (overwrite) $("rawJson").value = JSON.stringify(electricalCase(), null, 2); }
-function applyJson() { try { network = normalizeCase(JSON.parse($("rawJson").value)); loadLayoutForCase(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
+function applyJson() { try { network = normalizeCase(JSON.parse($("rawJson").value)); loadLayoutForCase(); fitCanvas(); selected = { type:"bus", id: network.buses[0]?.id || null }; syncProjectInputs(); syncStudyInputs(); modelChanged(true); runStudy(); } catch (err) { showIssue("bad", "JSON parse failed: " + err.message); } }
 function download(name, text, type) { const blob = new Blob([text], {type}); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 function reportToCsv(r) {
   const rows = [["bus_id","bus","kv_ll","fault","sym_ka","peak_asym_ka","asym_rms_ka","x_over_r","ground_return_ka","z_eq_r_pu","z_eq_x_pu","notes"]];
@@ -1109,9 +1404,9 @@ function printReport() {
   w.document.open(); w.document.write(reportToHtml()); w.document.close(); w.focus(); setTimeout(() => w.print(), 250);
 }
 
-function fallbackSample() { return { project:{name:"Fallback sample", revision:"A"}, base_mva:100, frequency_hz:60, prefault_voltage_pu:1, options:{fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5}, buses:[{id:"util",name:"Utility",kv_ll:12.47},{id:"msb",name:"MSB",kv_ll:.48}], branches:[{id:"tx1",kind:"transformer",name:"Transformer",from:"util",to:"msb",z1_pu:{r:.00588,x:.04118},z2_pu:{r:.00588,x:.04118},z0_pu:{r:.00588,x:.04118},has_z0:true,enabled:true}], sources:[{id:"src1",kind:"utility",name:"Utility equivalent",bus:"util",z1_pu:{r:.000995,x:.00995},z2_pu:{r:.000995,x:.00995},z0_pu:{r:.000995,x:.00995},has_z0:true,enabled:true}] }; }
+function fallbackSample() { return { project:{name:"Fallback sample", revision:"A"}, base_mva:100, frequency_hz:60, prefault_voltage_pu:1, options:{fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5}, buses:[{id:"util",name:"Utility",kv_ll:12.47},{id:"msb",name:"MSB",kv_ll:DEFAULT_SECONDARY_KV}], branches:[{id:"tx1",kind:"transformer",name:"Transformer",from:"util",to:"msb",primary_connection:"delta",secondary_connection:"grounded_wye",vector_shift_deg:-30,z1_pu:{r:.00588,x:.04118},z2_pu:{r:.00588,x:.04118},z0_pu:{r:.00588,x:.04118},has_z0:true,enabled:true}], sources:[{id:"src1",kind:"utility",name:"Utility equivalent",bus:"util",z1_pu:{r:.000995,x:.00995},z2_pu:{r:.000995,x:.00995},z0_pu:{r:.000995,x:.00995},has_z0:true,enabled:true}] }; }
 
-window.selectItem = selectItem; window.editSelected = editSelected; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag;
+window.selectItem = selectItem; window.editSelected = editSelected; window.editConductorGroup = editConductorGroup; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag;
 boot();
 </script>
 </body>

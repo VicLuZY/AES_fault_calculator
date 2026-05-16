@@ -81,6 +81,14 @@ pub struct Branch {
     pub name: String,
     pub from: String,
     pub to: String,
+    #[serde(default, skip_serializing_if = "ConductorSet::is_empty")]
+    pub conductors: ConductorSet,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub primary_connection: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub secondary_connection: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub vector_shift_deg: f64,
     pub z1_pu: Impedance,
     pub z2_pu: Impedance,
     #[serde(default)]
@@ -130,6 +138,30 @@ pub struct Impedance {
     pub x: f64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConductorSet {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub phases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub neutral: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ground: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bond: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other: Vec<String>,
+}
+
+impl ConductorSet {
+    pub fn is_empty(&self) -> bool {
+        self.phases.is_empty()
+            && self.neutral.is_empty()
+            && self.ground.is_empty()
+            && self.bond.is_empty()
+            && self.other.is_empty()
+    }
+}
+
 impl Impedance {
     pub fn new(r: f64, x: f64) -> Self { Self { r, x } }
     pub fn to_complex(self) -> Complex { Complex::new(self.r, self.x) }
@@ -175,6 +207,7 @@ impl Network {
             if b.kind.is_empty() {
                 b.kind = default_branch_kind();
             }
+            b.normalise_metadata_defaults();
         }
         for s in &mut self.sources {
             if s.kind.is_empty() {
@@ -216,6 +249,7 @@ impl Network {
         if branch.kind.is_empty() {
             branch.kind = default_branch_kind();
         }
+        branch.normalise_metadata_defaults();
         self.branches.push(branch);
         Ok(())
     }
@@ -284,6 +318,10 @@ impl Network {
             name: name.to_string(),
             from: from.to_string(),
             to: to.to_string(),
+            conductors: ConductorSet::default(),
+            primary_connection: "delta".to_string(),
+            secondary_connection: "grounded_wye".to_string(),
+            vector_shift_deg: -30.0,
             z1_pu: Impedance::from_complex(z1),
             z2_pu: Impedance::from_complex(z1),
             z0_pu: Impedance::from_complex(z0),
@@ -382,6 +420,52 @@ impl Bus {
     }
 }
 
+impl Branch {
+    pub fn normalise_metadata_defaults(&mut self) {
+        if self.kind == "transformer" {
+            if self.primary_connection.is_empty() {
+                self.primary_connection = "delta".to_string();
+            }
+            if self.secondary_connection.is_empty() {
+                self.secondary_connection = "grounded_wye".to_string();
+            }
+            if self.vector_shift_deg == 0.0 {
+                self.vector_shift_deg = default_transformer_vector_shift(&self.primary_connection, &self.secondary_connection);
+            }
+        }
+        if self.conductors.is_empty() {
+            self.conductors = default_conductors_for_branch(&self.kind, &self.secondary_connection);
+        }
+    }
+}
+
+fn default_transformer_vector_shift(primary: &str, secondary: &str) -> f64 {
+    let p_delta = primary == "delta";
+    let s_delta = secondary == "delta";
+    match (p_delta, s_delta) {
+        (true, false) => -30.0,
+        (false, true) => 30.0,
+        _ => 0.0,
+    }
+}
+
+fn default_conductors_for_branch(kind: &str, secondary_connection: &str) -> ConductorSet {
+    let neutral = if kind == "transformer" && secondary_connection == "delta" {
+        Vec::new()
+    } else if kind == "transformer" {
+        vec!["X0/N".to_string()]
+    } else {
+        vec!["N".to_string()]
+    };
+    ConductorSet {
+        phases: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+        neutral,
+        ground: vec!["EGC".to_string()],
+        bond: vec!["BOND".to_string()],
+        other: Vec::new(),
+    }
+}
+
 pub fn z_from_magnitude_xr(magnitude: f64, xr: f64) -> Complex {
     if magnitude == 0.0 {
         return Complex::ZERO;
@@ -421,12 +505,12 @@ mod tests {
     fn per_unit_base_conversions_use_bus_voltage_and_system_mva() {
         let mut net = Network::new(100.0);
         net.add_bus("b1", "13.8 kV bus", 13.8, 0.0, 0.0).unwrap();
-        net.add_bus("b2", "480 V bus", 0.48, 0.0, 0.0).unwrap();
+        net.add_bus("b2", "600 V bus", 0.6, 0.0, 0.0).unwrap();
 
         assert_close(net.z_base_ohm(0), 1.9044, 1e-12);
         assert_close(net.i_base_ka(0), 4.183697602823375, 1e-12);
-        assert_close(net.z_base_ohm(1), 0.002304, 1e-15);
-        assert_close(net.i_base_ka(1), 120.28130608117205, 1e-12);
+        assert_close(net.z_base_ohm(1), 0.0036, 1e-15);
+        assert_close(net.i_base_ka(1), 96.22504486493763, 1e-12);
     }
 
     #[test]
@@ -449,15 +533,20 @@ mod tests {
     fn transformer_builder_converts_percent_impedance_to_system_base() {
         let mut net = Network::new(100.0);
         net.add_bus("pri", "Primary", 12.47, 0.0, 0.0).unwrap();
-        net.add_bus("sec", "Secondary", 0.48, 0.0, 0.0).unwrap();
-        net.add_transformer("tx", "Transformer", "pri", "sec", 2500.0, 0.48, 5.75, 7.0, 5.75, true).unwrap();
+        net.add_bus("sec", "Secondary", 0.6, 0.0, 0.0).unwrap();
+        net.add_transformer("tx", "Transformer", "pri", "sec", 2500.0, 0.6, 5.75, 7.0, 5.75, true).unwrap();
 
         let branch = &net.branches[0];
         assert_eq!(branch.kind, "transformer");
         assert!(branch.has_z0);
+        assert_eq!(branch.primary_connection, "delta");
+        assert_eq!(branch.secondary_connection, "grounded_wye");
+        assert_close(branch.vector_shift_deg, -30.0, 1e-12);
+        assert_eq!(branch.conductors.phases, vec!["A".to_string(), "B".to_string(), "C".to_string()]);
+        assert_eq!(branch.conductors.neutral, vec!["X0/N".to_string()]);
         assert_close(branch.z1_pu.r, 0.3252691193458119, 1e-15);
         assert_close(branch.z1_pu.x, 2.276883835420683, 1e-15);
-        assert_close(branch.rating_a, 3007.032652029301, 1e-12);
+        assert_close(branch.rating_a, 2405.626121623441, 1e-12);
     }
 
     #[test]
@@ -466,6 +555,8 @@ mod tests {
         let json = net.to_json_pretty().unwrap();
         let case_value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(case_value["buses"].as_array().unwrap().iter().all(|b| b.get("x").is_none() && b.get("y").is_none()));
+        assert!(case_value["branches"][0]["conductors"]["phases"].as_array().unwrap().len() == 3);
+        assert_eq!(case_value["branches"][0]["vector_shift_deg"], -30.0);
         let parsed = Network::from_json(&json).unwrap();
 
         assert_eq!(parsed.project.name, net.project.name);

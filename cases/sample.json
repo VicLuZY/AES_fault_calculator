@@ -21,14 +21,14 @@
       "kv_ll": 12.47
     },
     {
-      "id": "msb_480",
+      "id": "msb_600",
       "name": "Main Switchboard",
-      "kv_ll": 0.48
+      "kv_ll": 0.6
     },
     {
-      "id": "mcc_480",
+      "id": "mcc_600",
       "name": "Mechanical MCC",
-      "kv_ll": 0.48
+      "kv_ll": 0.6
     }
   ],
   "branches": [
@@ -37,7 +37,26 @@
       "kind": "transformer",
       "name": "2500 kVA transformer",
       "from": "util_12k",
-      "to": "msb_480",
+      "to": "msb_600",
+      "conductors": {
+        "phases": [
+          "A",
+          "B",
+          "C"
+        ],
+        "neutral": [
+          "X0/N"
+        ],
+        "ground": [
+          "EGC"
+        ],
+        "bond": [
+          "BOND"
+        ]
+      },
+      "primary_connection": "delta",
+      "secondary_connection": "grounded_wye",
+      "vector_shift_deg": -30.0,
       "z1_pu": {
         "r": 0.3252691193458119,
         "x": 2.276883835420683
@@ -52,15 +71,31 @@
       },
       "has_z0": true,
       "enabled": true,
-      "rating_a": 3007.032652029301,
+      "rating_a": 2405.626121623441,
       "notes": "2500 kVA, 5.75%Z"
     },
     {
       "id": "fdr_mcc",
       "kind": "feeder",
       "name": "MSB to MCC feeder",
-      "from": "msb_480",
-      "to": "mcc_480",
+      "from": "msb_600",
+      "to": "mcc_600",
+      "conductors": {
+        "phases": [
+          "A",
+          "B",
+          "C"
+        ],
+        "neutral": [
+          "N"
+        ],
+        "ground": [
+          "EGC"
+        ],
+        "bond": [
+          "BOND"
+        ]
+      },
       "z1_pu": {
         "r": 0.0008,
         "x": 0.0023
@@ -106,7 +141,7 @@
       "id": "mot_mcc",
       "kind": "motor",
       "name": "Aggregate motor contribution",
-      "bus": "mcc_480",
+      "bus": "mcc_600",
       "z1_pu": {
         "r": 18.0,
         "x": 95.0

@@ -544,6 +544,10 @@ mod tests {
             name: "Feeder".to_string(),
             from: "src_bus".to_string(),
             to: "load_bus".to_string(),
+            conductors: Default::default(),
+            primary_connection: String::new(),
+            secondary_connection: String::new(),
+            vector_shift_deg: 0.0,
             z1_pu: Impedance::new(0.0, 0.2),
             z2_pu: Impedance::new(0.0, 0.2),
             z0_pu: Impedance::new(0.0, 0.2),
@@ -584,6 +588,10 @@ mod tests {
             name: "Feeder".to_string(),
             from: "source".to_string(),
             to: "load".to_string(),
+            conductors: Default::default(),
+            primary_connection: String::new(),
+            secondary_connection: String::new(),
+            vector_shift_deg: 0.0,
             z1_pu: Impedance::new(0.0, 0.2),
             z2_pu: Impedance::new(0.0, 0.2),
             z0_pu: Impedance::new(0.0, 0.2),
@@ -627,8 +635,8 @@ mod tests {
         let report = calculate_all_buses(&net).unwrap();
         let expected = [
             ("util_12k", [("3PH", 23.19616645407239), ("SLG", 23.180613463850623), ("LL", 20.08846941963909), ("DLG", 23.189565555284755)]),
-            ("msb_480", [("3PH", 49.358194813493355), ("SLG", 48.93696194116537), ("LL", 42.74545059342657), ("DLG", 49.1681040193189)]),
-            ("mcc_480", [("3PH", 49.31230881345831), ("SLG", 48.8594250573549), ("LL", 42.70571215171816), ("DLG", 49.1014457700479)]),
+            ("msb_600", [("3PH", 39.48655585079469), ("SLG", 39.1495695529323), ("LL", 34.196360474741255), ("DLG", 39.33448321545513)]),
+            ("mcc_600", [("3PH", 39.44984705076665), ("SLG", 39.08754004588392), ("LL", 34.164569721374534), ("DLG", 39.281156616038324)]),
         ];
 
         for (bus_id, faults) in expected {
@@ -687,6 +695,10 @@ mod tests {
             name: "Open feeder".to_string(),
             from: "source".to_string(),
             to: "load".to_string(),
+            conductors: Default::default(),
+            primary_connection: String::new(),
+            secondary_connection: String::new(),
+            vector_shift_deg: 0.0,
             z1_pu: Impedance::new(0.0, 0.2),
             z2_pu: Impedance::new(0.0, 0.2),
             z0_pu: Impedance::new(0.0, 0.2),
