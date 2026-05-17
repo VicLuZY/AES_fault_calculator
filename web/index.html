@@ -172,8 +172,10 @@
     }
     svg { width: 100%; height: 100%; display: block; }
     .canvas-title { position: absolute; left: 12px; top: 10px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
-    .legend { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
+    .legend { position: absolute; right: 12px; top: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: min(760px, calc(100% - 24px)); font-size: 11px; color: var(--muted); z-index: 2; }
     .legend span { border: 1px solid var(--line); background: rgba(255,255,255,.92); border-radius: 3px; padding: 5px 7px; }
+    .legend .voltage-key { display: inline-flex; align-items: center; gap: 5px; }
+    .legend .voltage-dot { width: 10px; height: 10px; border-radius: 2px; background: var(--voltage-color); border: 1px solid rgba(255,255,255,.45); box-shadow: 0 0 0 1px rgba(15,23,42,.28); }
     .canvas-note { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px; color: #435265; font-size: 11px; pointer-events: none; }
     .canvas-tools { position: absolute; left: 12px; top: 42px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
     .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
@@ -227,7 +229,7 @@
     .branch-line.feeder, .branch-line.transformer, .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: var(--draw-ink); }
     .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
     .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
-    .branch-selected { stroke: var(--draw-select); stroke-width: calc(var(--wire-stroke) + 3); }
+    .branch-select-halo { stroke: var(--draw-select); stroke-width: calc(var(--wire-stroke) + 4); fill: none; pointer-events: none; opacity: .8; }
     .sld-element .terminal-add { opacity: 0; pointer-events: none; transition: opacity .12s ease; }
     .sld-element:hover .terminal-add { opacity: 1; pointer-events: auto; }
     .terminal-add circle { fill: var(--draw-symbol-fill); stroke: var(--draw-select); stroke-width: 1.6; }
@@ -237,6 +239,8 @@
     .add-menu .menu-title { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; padding: 2px 3px 4px; }
     .equip-symbol { fill: var(--draw-symbol-fill); stroke: var(--draw-ink); stroke-width: var(--symbol-stroke); cursor: pointer; }
     .equip-label { fill: var(--draw-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; font-weight: 800; pointer-events: none; }
+    .winding-side-label { fill: var(--draw-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 8px; font-weight: 800; pointer-events: none; }
+    .winding-bus-label { fill: var(--draw-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 8px; pointer-events: none; }
     .source-symbol { fill: var(--draw-symbol-fill); stroke: var(--draw-ink); stroke-width: var(--symbol-stroke); cursor: pointer; }
     .source-selected { stroke: var(--draw-select); stroke-width: calc(var(--symbol-stroke) + 1.2); }
     .fault-chip { fill: var(--draw-fault-fill); stroke: var(--draw-fault-stroke); stroke-width: 1; rx: 2; pointer-events: none; }
@@ -374,7 +378,7 @@
         <button id="btnZoomFit" class="small ghost">Fit</button>
         <label class="tool-check"><input id="snapGrid" type="checkbox" checked> Snap</label>
       </div>
-      <div class="legend"><span>Sources and loads: one terminal</span><span>Conductors: two terminals</span><span>Buses: multiple terminals</span></div>
+      <div class="legend" id="legendPanel"><span>Sources and loads: one terminal</span><span>Conductors: two terminals</span><span>Buses: multiple terminals</span></div>
       <div class="model-summary" id="modelSummaryPanel"></div>
       <div class="canvas-note"><span>Calculated values are engineering aids only. Validate with the applicable IEEE, ANSI, utility, and equipment data for issued work.</span><span id="saveState">local model ready</span></div>
     </section>
@@ -765,6 +769,48 @@ function normalizeVoltageKv(kv) {
 function voltageLabel(kv) {
   const option = VOLTAGE_OPTIONS.find(v => v.key === voltageKey(kv));
   return option ? (option.display || option.label) : `${fmt(num(kv) * 1000, 0)} V`;
+}
+function voltageColor(kv) {
+  const palette = {
+    "120":"#60a5fa",
+    "120r3":"#a78bfa",
+    "240":"#38bdf8",
+    "160r3":"#f472b6",
+    "200r3":"#fb7185",
+    "480":"#22c55e",
+    "600":"#f59e0b",
+    "2400":"#14b8a6",
+    "2400r3":"#84cc16",
+    "7200r3":"#facc15",
+    "8000r3":"#fb923c",
+    "14400r3":"#ef4444"
+  };
+  return palette[voltageKey(kv)] || "#94a3b8";
+}
+function voltageStrokeStyle(kv) {
+  return `stroke:${voltageColor(kv)}`;
+}
+function voltageLegendItems() {
+  const byKey = new Map();
+  for (const bus of network?.buses || []) {
+    const key = voltageKey(bus.kv_ll);
+    if (!byKey.has(key)) byKey.set(key, bus.kv_ll);
+  }
+  for (const source of network?.sources || []) {
+    const kv = sourceVoltage(source);
+    const key = voltageKey(kv);
+    if (!byKey.has(key)) byKey.set(key, kv);
+  }
+  return [...byKey.values()].sort((a, b) => a - b);
+}
+function renderVoltageLegend() {
+  const legend = $("legendPanel");
+  if (!legend) return;
+  const staticItems = `<span>Sources and loads: one terminal</span><span>Conductors: two terminals</span><span>Buses: multiple terminals</span>`;
+  const voltageItems = voltageLegendItems()
+    .map(kv => `<span class="voltage-key" style="--voltage-color:${voltageColor(kv)}"><i class="voltage-dot"></i>${escapeHtml(voltageLabel(kv))}</span>`)
+    .join("");
+  legend.innerHTML = staticItems + voltageItems;
 }
 function defaultSourceVoltage(kind="utility") {
   return kind === "load" ? DEFAULT_SECONDARY_KV : voltageKv(DEFAULT_UTILITY_VOLTAGE_KEY);
@@ -1335,6 +1381,7 @@ function renderCanvas() {
   const svg = $("oneLine");
   ensureLayout();
   applyDrawingPreferences();
+  renderVoltageLegend();
   const gridSvg = drawingPrefs.grid ? renderCadGrid() : "";
   const branchSvg = network.branches.map(renderBranch).join("");
   const sourceSvg = network.sources.map(renderSource).join("");
@@ -1460,11 +1507,19 @@ function renderBranch(br) {
   const kind = br.kind || "feeder";
   const open = isOpen(br);
   const d = pathD(points);
-  const symbol = branchSymbol(br, mid.x, mid.y);
+  const symbol = branchSymbol(br, points, mid);
   const insertPoint = polylinePointAt(points, .62);
   const insert = kind === "feeder" ? terminalPlus(insertPoint.x, insertPoint.y, "branch", br.id, "mid") : "";
   const transformerMeta = kind === "transformer" ? `<text class="svg-small" x="${mid.x}" y="${mid.y+42}" text-anchor="middle">${fmt(transformerKva(br),0)} kVA / ${fmt(transformerPercentZ(br),2)}%Z</text>` : "";
-  return `<g class="sld-element"><path class="branch-line ${kind} ${open ? "open" : ""} ${sel ? "branch-selected" : ""}" d="${d}"/><path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}${insert}<text class="svg-small" x="${mid.x}" y="${mid.y-30}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text>${transformerMeta}</g>`;
+  const select = sel ? `<path class="branch-select-halo" d="${d}"/>` : "";
+  let linework = "";
+  if (kind === "transformer") {
+    const [primary, secondary] = splitPolylineAtRatio(points, .5);
+    linework = `<path class="branch-line transformer ${open ? "open" : ""}" style="${voltageStrokeStyle(busVoltage(network, br.from))}" d="${pathD(primary)}"/><path class="branch-line transformer ${open ? "open" : ""}" style="${voltageStrokeStyle(busVoltage(network, br.to))}" d="${pathD(secondary)}"/>`;
+  } else {
+    linework = `<path class="branch-line ${kind} ${open ? "open" : ""}" style="${voltageStrokeStyle(busVoltage(network, br.from))}" d="${d}"/>`;
+  }
+  return `<g class="sld-element">${select}${linework}<path class="branch-hit" d="${d}" onclick="selectItem('branch','${br.id}')"/>${symbol}${insert}<text class="svg-small" x="${mid.x}" y="${mid.y-30}" text-anchor="middle">${escapeHtml(br.name || br.id)}</text>${transformerMeta}</g>`;
 }
 function branchPoints(br) {
   const a = branchTerminalAnchor(br, br.from, br.to), b = branchTerminalAnchor(br, br.to, br.from);
@@ -1514,12 +1569,50 @@ function polylinePointAt(points, ratio=.5) {
   }
   return points.at(-1) || {x:0,y:0};
 }
-function branchSymbol(br, x, y) {
+function polylineTangentAt(points, ratio=.5) {
+  if (!Array.isArray(points) || points.length < 2) return { ux:0, uy:1 };
+  let total = 0;
+  for (let i=1;i<points.length;i++) total += Math.hypot(points[i].x-points[i-1].x, points[i].y-points[i-1].y);
+  let acc = 0, target = total * ratio;
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1], b = points[i], len = Math.hypot(b.x-a.x, b.y-a.y);
+    if (!len) continue;
+    if (acc + len >= target) return { ux:(b.x-a.x)/len, uy:(b.y-a.y)/len };
+    acc += len;
+  }
+  for (let i=points.length-1;i>0;i--) {
+    const a = points[i-1], b = points[i], len = Math.hypot(b.x-a.x, b.y-a.y);
+    if (len) return { ux:(b.x-a.x)/len, uy:(b.y-a.y)/len };
+  }
+  return { ux:0, uy:1 };
+}
+function splitPolylineAtRatio(points, ratio=.5) {
+  if (!Array.isArray(points) || points.length < 2) return [points || [], points || []];
+  let total = 0;
+  for (let i=1;i<points.length;i++) total += Math.hypot(points[i].x-points[i-1].x, points[i].y-points[i-1].y);
+  const target = total * ratio;
+  let acc = 0;
+  const left = [points[0]];
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1], b = points[i], len = Math.hypot(b.x-a.x, b.y-a.y);
+    if (acc + len >= target) {
+      const t = len ? (target - acc) / len : 0;
+      const cut = {x:a.x + (b.x-a.x)*t, y:a.y + (b.y-a.y)*t};
+      left.push(cut);
+      return [left, [cut, ...points.slice(i)]];
+    }
+    left.push(b);
+    acc += len;
+  }
+  const end = points.at(-1);
+  return [points, [end]];
+}
+function branchSymbol(br, points, mid) {
+  const x = mid.x, y = mid.y;
   const kind = br.kind || "feeder";
   const state = br.state || (br.enabled === false ? "normally_open" : "normally_closed");
   if (kind === "transformer") {
-    const p = connectionGlyph(br.primary_connection || "grounded_wye"), s = connectionGlyph(br.secondary_connection || "grounded_wye");
-    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-14}" cy="${y}" r="12"/><circle class="equip-symbol" cx="${x+14}" cy="${y}" r="12"/><line x1="${x-2}" y1="${y-14}" x2="${x-2}" y2="${y+14}" stroke="var(--draw-ink)" stroke-width="1"/><text class="equip-label" x="${x-14}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+14}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
+    return transformerSymbol(br, points, mid);
   }
   if (kind === "breaker" || kind === "tie") {
     return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-19}" y="${y-10}" width="38" height="20" rx="0"/><line x1="${x-12}" y1="${y}" x2="${x+12}" y2="${y}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
@@ -1530,7 +1623,59 @@ function branchSymbol(br, x, y) {
   }
   return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-16}" y="${y-8}" width="32" height="16" rx="0"/><line x1="${x-9}" y1="${y+6}" x2="${x+9}" y2="${y-6}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/></g>`;
 }
+function transformerSymbol(br, points, mid) {
+  const { ux, uy } = polylineTangentAt(points, .5);
+  const px = mid.x - ux * 18, py = mid.y - uy * 18;
+  const sx = mid.x + ux * 18, sy = mid.y + uy * 18;
+  const nx = -uy, ny = ux;
+  const primaryKv = busVoltage(network, br.from);
+  const secondaryKv = busVoltage(network, br.to);
+  const primaryColor = voltageColor(primaryKv);
+  const secondaryColor = voltageColor(secondaryKv);
+  const primaryConnection = br.primary_connection || "delta";
+  const secondaryConnection = br.secondary_connection || "grounded_wye";
+  const labelOffset = Math.abs(uy) > Math.abs(ux) ? 34 : 28;
+  const busOffset = Math.abs(uy) > Math.abs(ux) ? 46 : 38;
+  const primaryLabel = `${connectionGlyph(primaryConnection)} ${voltageLabel(primaryKv)}`;
+  const secondaryLabel = `${connectionGlyph(secondaryConnection)} ${voltageLabel(secondaryKv)}`;
+  const primaryBus = truncateSvgText(busLabel(br.from), 18);
+  const secondaryBus = truncateSvgText(busLabel(br.to), 18);
+  return `<g class="transformer-symbol" onclick="selectItem('branch','${br.id}')">
+    <line x1="${fmt(mid.x + nx * 5,1)}" y1="${fmt(mid.y + ny * 18,1)}" x2="${fmt(mid.x - nx * 5,1)}" y2="${fmt(mid.y - ny * 18,1)}" stroke="var(--draw-muted)" stroke-width="1"/>
+    ${transformerWindingMark(primaryConnection, px, py, primaryColor, "PRI")}
+    ${transformerWindingMark(secondaryConnection, sx, sy, secondaryColor, "SEC")}
+    <text class="winding-side-label" x="${fmt(px + nx * labelOffset,1)}" y="${fmt(py + ny * labelOffset + 3,1)}" text-anchor="middle">${escapeHtml(primaryLabel)}</text>
+    <text class="winding-side-label" x="${fmt(sx - nx * labelOffset,1)}" y="${fmt(sy - ny * labelOffset + 3,1)}" text-anchor="middle">${escapeHtml(secondaryLabel)}</text>
+    <text class="winding-bus-label" x="${fmt(px + nx * busOffset,1)}" y="${fmt(py + ny * busOffset + 14,1)}" text-anchor="middle">${escapeHtml(primaryBus)}</text>
+    <text class="winding-bus-label" x="${fmt(sx - nx * busOffset,1)}" y="${fmt(sy - ny * busOffset + 14,1)}" text-anchor="middle">${escapeHtml(secondaryBus)}</text>
+  </g>`;
+}
+function transformerWindingMark(connection, x, y, color, side) {
+  const mark = connectionMark(connection, x, y, color);
+  return `<g class="winding-${side.toLowerCase()}">
+    <circle class="equip-symbol" style="stroke:${color}" cx="${fmt(x,1)}" cy="${fmt(y,1)}" r="15"/>
+    ${mark}
+    <text class="equip-label" x="${fmt(x,1)}" y="${fmt(y+4,1)}" text-anchor="middle">${side}</text>
+  </g>`;
+}
+function connectionMark(connection, x, y, color) {
+  if (connection === "delta") {
+    const top = `${fmt(x,1)} ${fmt(y-9,1)}`;
+    const left = `${fmt(x-8,1)} ${fmt(y+7,1)}`;
+    const right = `${fmt(x+8,1)} ${fmt(y+7,1)}`;
+    return `<path d="M${top} L${right} L${left} Z" fill="none" stroke="${color}" stroke-width="1.4"/>`;
+  }
+  if (connection === "grounding") {
+    return `<g stroke="${color}" stroke-width="1.4" fill="none"><line x1="${fmt(x,1)}" y1="${fmt(y-9,1)}" x2="${fmt(x,1)}" y2="${fmt(y+6,1)}"/><line x1="${fmt(x-8,1)}" y1="${fmt(y+6,1)}" x2="${fmt(x+8,1)}" y2="${fmt(y+6,1)}"/><line x1="${fmt(x-5,1)}" y1="${fmt(y+10,1)}" x2="${fmt(x+5,1)}" y2="${fmt(y+10,1)}"/><line x1="${fmt(x-2,1)}" y1="${fmt(y+14,1)}" x2="${fmt(x+2,1)}" y2="${fmt(y+14,1)}"/></g>`;
+  }
+  const ground = connection === "grounded_wye" ? `<line x1="${fmt(x,1)}" y1="${fmt(y+6,1)}" x2="${fmt(x,1)}" y2="${fmt(y+14,1)}"/><line x1="${fmt(x-6,1)}" y1="${fmt(y+14,1)}" x2="${fmt(x+6,1)}" y2="${fmt(y+14,1)}"/><line x1="${fmt(x-4,1)}" y1="${fmt(y+17,1)}" x2="${fmt(x+4,1)}" y2="${fmt(y+17,1)}"/>` : "";
+  return `<g stroke="${color}" stroke-width="1.4" fill="none"><line x1="${fmt(x,1)}" y1="${fmt(y,1)}" x2="${fmt(x,1)}" y2="${fmt(y-10,1)}"/><line x1="${fmt(x,1)}" y1="${fmt(y,1)}" x2="${fmt(x-9,1)}" y2="${fmt(y+6,1)}"/><line x1="${fmt(x,1)}" y1="${fmt(y,1)}" x2="${fmt(x+9,1)}" y2="${fmt(y+6,1)}"/>${ground}</g>`;
+}
 function connectionGlyph(v) { return v === "delta" ? "D" : v === "grounding" ? "G" : v === "wye" ? "Y" : "Yg"; }
+function truncateSvgText(value, max=18) {
+  const text = String(value || "");
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}...` : text;
+}
 function stateLabel(v) {
   const state = String(v || "");
   if (state === "out_of_service" || state.includes("open")) return "open";
@@ -1546,25 +1691,29 @@ function renderSource(s) {
   const sy = kind === "load" ? anchor.y + 96 : anchor.y - 96;
   const terminalY = kind === "load" ? sy - 20 : sy + 20;
   const sel = selected.type === "source" && selected.id === s.id;
+  const sourceColor = voltageColor(sourceVoltage(s));
+  const sourceStyle = sel ? "" : ` style="stroke:${sourceColor}"`;
   const label = kind === "load" ? "LOAD" : kind === "source" ? "SRC" : "UTIL";
   const open = kind !== "load" && isOpen(s);
   const nameY = kind === "load" ? sy + 31 : sy - 34;
   const voltageY = kind === "load" ? sy + 45 : sy - 20;
   const symbol = kind === "load"
-    ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
-    : `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="var(--draw-ink)" stroke-width="var(--wire-stroke)"/>`;
-  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
+    ? `<rect class="source-symbol ${sel ? "source-selected" : ""}"${sourceStyle} x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
+    : `<rect class="source-symbol ${sel ? "source-selected" : ""}"${sourceStyle} x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="${sourceColor}" stroke-width="var(--symbol-stroke)"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="${sourceColor}" stroke-width="var(--wire-stroke)"/>`;
+  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" style="stroke:${sourceColor}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
   const sel = selected.type === "bus" && selected.id === b.id;
   const r = busReport(b.id);
   const w = BUS_WIDTH;
+  const busColor = voltageColor(b.kv_ll);
+  const busStyle = `stroke:${busColor}`;
   const x1 = p.x - w / 2, x2 = p.x + w / 2;
   const top = busTerminalPoint(b.id, "top"), bottom = busTerminalPoint(b.id, "bottom"), left = busTerminalPoint(b.id, "left"), right = busTerminalPoint(b.id, "right");
   const chip = r ? `<rect class="fault-chip" x="${p.x-72}" y="${p.y+66}" width="144" height="18"/><text class="fault-chip-text" x="${p.x}" y="${p.y+79}" text-anchor="middle">3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA</text>` : "";
   const selection = sel ? `<rect class="bus-selection" x="${x1-36}" y="${p.y-62}" width="${w+72}" height="${r ? 152 : 122}"/>` : "";
-  return `<g class="sld-element" data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${x1-44}" y="${p.y-66}" width="${w+88}" height="${r ? 160 : 130}"/><text class="svg-label" x="${p.x}" y="${p.y-27}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><line class="busbar" x1="${x1}" y1="${p.y}" x2="${x2}" y2="${p.y}"/><line class="bus-tick" x1="${x1}" y1="${p.y-8}" x2="${x1}" y2="${p.y+8}"/><line class="bus-tick" x1="${x2}" y1="${p.y-8}" x2="${x2}" y2="${p.y+8}"/><line class="bus-tick" x1="${top.x}" y1="${top.y+11}" x2="${p.x}" y2="${p.y-7}"/><line class="bus-tick" x1="${bottom.x}" y1="${p.y+7}" x2="${bottom.x}" y2="${bottom.y-11}"/><text class="svg-small" x="${p.x}" y="${p.y+24}" text-anchor="middle">${escapeHtml(voltageLabel(b.kv_ll))}</text>${chip}${selection}${terminalPlus(top.x, top.y, "bus", b.id, "top")}${terminalPlus(left.x, left.y, "bus", b.id, "left")}${terminalPlus(right.x, right.y, "bus", b.id, "right")}${terminalPlus(bottom.x, bottom.y, "bus", b.id, "bottom")}</g>`;
+  return `<g class="sld-element" data-bus="${b.id}" onpointerdown="startBusDrag(event,'${b.id}')" onclick="selectItem('bus','${b.id}')"><rect class="bus-hit" x="${x1-44}" y="${p.y-66}" width="${w+88}" height="${r ? 160 : 130}"/><text class="svg-label" x="${p.x}" y="${p.y-27}" text-anchor="middle">${escapeHtml(b.name || b.id)}</text><line class="busbar" style="${busStyle}" x1="${x1}" y1="${p.y}" x2="${x2}" y2="${p.y}"/><line class="bus-tick" style="${busStyle}" x1="${x1}" y1="${p.y-8}" x2="${x1}" y2="${p.y+8}"/><line class="bus-tick" style="${busStyle}" x1="${x2}" y1="${p.y-8}" x2="${x2}" y2="${p.y+8}"/><line class="bus-tick" style="${busStyle}" x1="${top.x}" y1="${top.y+11}" x2="${p.x}" y2="${p.y-7}"/><line class="bus-tick" style="${busStyle}" x1="${bottom.x}" y1="${p.y+7}" x2="${bottom.x}" y2="${bottom.y-11}"/><text class="svg-small" x="${p.x}" y="${p.y+24}" text-anchor="middle">${escapeHtml(voltageLabel(b.kv_ll))}</text>${chip}${selection}${terminalPlus(top.x, top.y, "bus", b.id, "top")}${terminalPlus(left.x, left.y, "bus", b.id, "left")}${terminalPlus(right.x, right.y, "bus", b.id, "right")}${terminalPlus(bottom.x, bottom.y, "bus", b.id, "bottom")}</g>`;
 }
 function busReport(id) { return report?.buses?.find(b => b.bus_id === id); }
 function faultKA(busReport, kind) { return busReport?.faults?.find(f => f.kind === kind)?.available_sym_ka || 0; }
