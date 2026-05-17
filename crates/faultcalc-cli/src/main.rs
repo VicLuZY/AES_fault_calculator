@@ -1,4 +1,4 @@
-use faultcalc_core::{calculate_all_buses, report_csv, report_json_pretty, sample_json, Network, Result, VERSION};
+use faultcalc_core::{calculate_all_buses, normalise_case, report_csv, report_json_pretty, sample_json, Network, Result, VERSION};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -59,7 +59,7 @@ fn run_calc(args: &[String]) -> Result<()> {
 
     let text = fs::read_to_string(input)?;
     let mut net = Network::from_json(&text)?;
-    net.normalise_defaults();
+    normalise_case(&mut net);
     let report = calculate_all_buses(&net)?;
     let json = report_json_pretty(&report)?;
     if let Some(path) = json_out {

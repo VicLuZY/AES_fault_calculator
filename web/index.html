@@ -357,6 +357,7 @@ let canvasView = { x: 0, y: 0, w: 1100, h: 620 };
 const DEFAULT_SECONDARY_KV = 0.6;
 const SQRT3 = Math.sqrt(3);
 const DEFAULT_VOLTAGE_KEY = "600";
+const DEFAULT_UTILITY_VOLTAGE_KEY = "7200r3";
 let VOLTAGE_OPTIONS = [
   { key:"120", label:"120 V", display:"120 V", volts:120, kv_ll:.12 },
   { key:"120r3", label:"120*sqrt(3) V (208 V)", display:"208 V", volts:120 * SQRT3, kv_ll:120 * SQRT3 / 1000 },
@@ -589,8 +590,10 @@ function normalizeCase(value) {
     return domain.network;
   }
   next.buses.forEach(bus => { bus.kv_ll = normalizeVoltageKv(bus.kv_ll || DEFAULT_SECONDARY_KV); });
+  next.sources.forEach(source => normalizeSourceMetadata(source, next));
   next.branches.forEach(branch => normalizeBranchMetadata(branch));
   syncConductorVoltageGroups(next);
+  syncSourcesToTerminalVoltage(next);
   domainView = fallbackDomainView(next);
   return next;
 }
@@ -610,6 +613,11 @@ function defaultVectorShift(br) {
   return 0;
 }
 function branchWithMetadata(br) { normalizeBranchMetadata(br); return br; }
+function normalizeSourceMetadata(source, caseModel=network) {
+  source.kind = source.kind || "utility";
+  if (!num(source.kv_ll)) source.kv_ll = busVoltage(caseModel, source.bus) || defaultSourceVoltage(source.kind);
+  source.kv_ll = normalizeVoltageKv(source.kv_ll);
+}
 function voltageKv(key) {
   const option = VOLTAGE_OPTIONS.find(v => v.key === key) || VOLTAGE_OPTIONS.find(v => v.key === DEFAULT_VOLTAGE_KEY);
   return option?.kv_ll ?? (option?.volts || 600) / 1000;
@@ -628,11 +636,33 @@ function voltageLabel(kv) {
   const option = VOLTAGE_OPTIONS.find(v => v.key === voltageKey(kv));
   return option ? (option.display || option.label) : `${fmt(num(kv) * 1000, 0)} V`;
 }
+function defaultSourceVoltage(kind="utility") {
+  return kind === "load" ? DEFAULT_SECONDARY_KV : voltageKv(DEFAULT_UTILITY_VOLTAGE_KEY);
+}
+function sourceVoltage(source, caseModel=network) {
+  return num(source?.kv_ll) || busVoltage(caseModel, source?.bus) || defaultSourceVoltage(source?.kind);
+}
+function sourceVoltageLabel(source, caseModel=network) {
+  return voltageLabel(sourceVoltage(source, caseModel));
+}
 function setBusVoltage(id, key) {
   const bus = network.buses.find(b => b.id === id);
   if (!bus) return;
   bus.kv_ll = voltageKv(key);
   if (!wasmReady) syncConnectedBusVoltage(id, bus.kv_ll, network);
+  syncSourcesToTerminalVoltage(network);
+  modelChanged(true);
+}
+function setSourceVoltage(id, key) {
+  const source = network.sources.find(s => s.id === id);
+  if (!source) return;
+  source.kv_ll = voltageKv(key);
+  const bus = network.buses.find(b => b.id === source.bus);
+  if (bus) {
+    bus.kv_ll = source.kv_ll;
+    if (!wasmReady) syncConnectedBusVoltage(bus.id, bus.kv_ll, network);
+  }
+  syncSourcesToTerminalVoltage(network);
   modelChanged(true);
 }
 function isVoltageChangingBranch(br) {
@@ -732,8 +762,21 @@ function syncConductorVoltageGroups(caseModel=network) {
         if (br.to === id && br.from && !visited.has(br.from)) queue.push(br.from);
       }
     }
-    const anchorKv = busVoltage(caseModel, members[0]);
+    const anchorKv = componentSourceVoltage(caseModel, members) || busVoltage(caseModel, members[0]);
     members.forEach(id => setCaseBusVoltage(caseModel, id, anchorKv));
+  }
+}
+function componentSourceVoltage(caseModel, members) {
+  const ids = new Set(members || []);
+  const source = (caseModel?.sources || []).find(s => (s.kind || "") !== "load" && ids.has(s.bus) && num(s.kv_ll) > 0)
+    || (caseModel?.sources || []).find(s => ids.has(s.bus) && num(s.kv_ll) > 0);
+  return source ? normalizeVoltageKv(source.kv_ll) : 0;
+}
+function syncSourcesToTerminalVoltage(caseModel=network) {
+  for (const source of caseModel?.sources || []) {
+    const bus = caseModel.buses?.find(b => b.id === source.bus);
+    if (bus) source.kv_ll = normalizeVoltageKv(bus.kv_ll);
+    else if (!num(source.kv_ll)) source.kv_ll = defaultSourceVoltage(source.kind);
   }
 }
 function collectLegacyLayout(value) {
@@ -1028,7 +1071,7 @@ function renderNavigator() {
       ? `${voltageLabel(item.kv_ll)} line-to-line`
       : type === "branch"
         ? `${busLabel(item.from)} to ${busLabel(item.to)} · ${item.kind || "branch"} · ${stateLabel(item.state || (item.enabled === false ? "open" : "closed"))}`
-        : `${busLabel(item.bus)} · ${item.kind || "source"} · ${item.kind === "load" ? "terminal" : stateLabel(item.state || (item.enabled === false ? "open" : "closed"))}`;
+        : `${busLabel(item.bus)} · ${sourceVoltageLabel(item)} · ${item.kind || "source"} · ${item.kind === "load" ? "terminal" : stateLabel(item.state || (item.enabled === false ? "open" : "closed"))}`;
     return `<div class="list-item ${sel ? "selected" : ""}" onclick="selectItem('${type}','${item.id}')"><div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(sub)}</div></div>`;
   }).join("") || `<div class="muted">No ${currentTab} yet.</div>`;
 }
@@ -1056,6 +1099,9 @@ function busSelect(label, path, value) { return `<div class="field"><label>${lab
 function checkboxField(label, path, checked) { return `<label class="tag"><input type="checkbox" ${checked ? "checked" : ""} onchange="editSelected('${path}', this.checked, 'bool')" style="width:auto"> ${label}</label>`; }
 function voltageField(b) {
   return `<div class="field"><label>Voltage <span class="unit">LL</span></label><select onchange="setBusVoltage('${b.id}', this.value)">${VOLTAGE_OPTIONS.map(v => `<option value="${v.key}" ${v.key===voltageKey(b.kv_ll)?"selected":""}>${escapeHtml(v.label)}</option>`).join("")}</select></div>`;
+}
+function sourceVoltageField(s) {
+  return `<div class="field"><label>Voltage <span class="unit">LL</span></label><select onchange="setSourceVoltage('${s.id}', this.value)">${VOLTAGE_OPTIONS.map(v => `<option value="${v.key}" ${v.key===voltageKey(sourceVoltage(s))?"selected":""}>${escapeHtml(v.label)}</option>`).join("")}</select></div>`;
 }
 function busEditor(b) { return field("Name", "name", b.name) + voltageField(b) + field("Notes", "notes", b.notes || ""); }
 function branchEditor(br) {
@@ -1096,7 +1142,8 @@ function transformerRatingTable(br) {
 function sourceEditor(s) {
   const basic = selectField("Kind", "kind", s.kind || "utility", ["utility","source","load"])
     + field("Name", "name", s.name)
-    + busSelect("Bus", "bus", s.bus);
+    + busSelect("Bus", "bus", s.bus)
+    + sourceVoltageField(s);
   if ((s.kind || "") === "load") return basic + field("Notes", "notes", s.notes || "");
   return basic
     + selectField("State", "state", s.state || (s.enabled === false ? "out_of_service" : "in_service"), ["in_service","out_of_service","maintenance_open","emergency_parallel"])
@@ -1125,6 +1172,15 @@ function editSelected(path, value, type, quiet=false) {
       obj.enabled = true;
       obj.state = "in_service";
       if (!obj.rating || obj.rating === "load terminal") obj.rating = "source equivalent";
+    }
+    if (!num(obj.kv_ll)) obj.kv_ll = defaultSourceVoltage(obj.kind);
+  }
+  if (selected.type === "source" && path === "bus") {
+    const bus = network.buses.find(b => b.id === obj.bus);
+    if (bus) {
+      obj.kv_ll = num(obj.kv_ll) || bus.kv_ll;
+      bus.kv_ll = normalizeVoltageKv(obj.kv_ll);
+      if (!wasmReady) syncConnectedBusVoltage(bus.id, bus.kv_ll, network);
     }
   }
   if (selected.type === "branch" && ["kind","primary_connection","secondary_connection"].includes(path)) {
@@ -1257,10 +1313,12 @@ function renderSource(s) {
   const sel = selected.type === "source" && selected.id === s.id;
   const label = kind === "load" ? "LOAD" : kind === "source" ? "SRC" : "UTIL";
   const open = kind !== "load" && isOpen(s);
+  const nameY = kind === "load" ? sy + 31 : sy - 34;
+  const voltageY = kind === "load" ? sy + 45 : sy - 20;
   const symbol = kind === "load"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
     : `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="#263241" stroke-width="1.6"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="#263241" stroke-width="1.3"/>`;
-  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${kind === "load" ? sy+31 : sy-26}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
+  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
@@ -1378,7 +1436,7 @@ function fallbackScheduleRows() {
   const rows = [];
   for (const b of network.buses) rows.push(`<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`);
   for (const br of network.branches) rows.push(`<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`);
-  for (const s of network.sources) rows.push(`<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`);
+  for (const s of network.sources) rows.push(`<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))} (${escapeHtml(sourceVoltageLabel(s))})</td><td>${escapeHtml(s.rating || "")}</td></tr>`);
   return rows;
 }
 function branchConnectionText(br) {
@@ -1488,6 +1546,8 @@ function validateLocalFallback() {
   for (const s of network.sources) {
     const label = s.kind === "load" ? "Load" : "Source";
     if (!network.buses.find(b => b.id === s.bus)) out.push(`${label} ${s.name || s.id} references a missing bus.`);
+    if (!num(s.kv_ll)) out.push(`${label} ${s.name || s.id} has no voltage rating.`);
+    if (network.buses.find(b => b.id === s.bus) && voltageKey(s.kv_ll) !== voltageKey(busVoltage(network, s.bus))) out.push(`${label} ${s.name || s.id} voltage rating does not match its terminal bus.`);
     if (s.kind !== "load" && s.enabled !== false && !s.rating) out.push(`Source ${s.name || s.id} has no rating metadata.`);
     if (s.kind !== "load" && s.enabled !== false && !s.has_z0 && ["utility","source"].includes(s.kind || "")) out.push(`Source ${s.name || s.id} has no zero-sequence data.`);
   }
@@ -1575,7 +1635,7 @@ function addLoadAtBus(bus) {
   if (!bus) { addBus(); bus = selectedBusId(); }
   if (!bus) return;
   const id = nextId("load", network.sources);
-  network.sources.push({ id, kind:"load", name:"Load", bus, z1_pu:{r:0,x:1}, z2_pu:{r:0,x:1}, z0_pu:{r:0,x:1}, has_z0:false, enabled:false, state:"out_of_service", rating:"load terminal" });
+  network.sources.push({ id, kind:"load", name:"Load", bus, kv_ll:busVoltage(network, bus), z1_pu:{r:0,x:1}, z2_pu:{r:0,x:1}, z0_pu:{r:0,x:1}, has_z0:false, enabled:false, state:"out_of_service", rating:"load terminal" });
   selectItem("source", id);
   modelChanged(true);
 }
@@ -1690,7 +1750,7 @@ function reportToCsv(r) {
 function reportToHtml() {
   if (!report) return "";
   const resultRows = report.buses.flatMap(b => b.faults.map(f => `<tr><td>${escapeHtml(b.bus)}</td><td>${fmt(b.kv_ll,3)}</td><td>${f.kind}</td><td>${fmt(f.available_sym_ka,3)}</td><td>${fmt(f.peak_asym_ka,3)}</td><td>${fmt(f.asym_rms_ka,3)}</td><td>${f.x_over_r === null ? "" : fmt(f.x_over_r,2)}</td><td>${f.ground_return_ka === null ? "" : fmt(f.ground_return_ka,3)}</td></tr>`)).join("");
-  const scheduleRows = [...network.buses.map(b => `<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`), ...network.branches.map(br => `<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`), ...network.sources.map(s => `<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))}</td><td>${escapeHtml(s.rating || "")}</td></tr>`)].join("");
+  const scheduleRows = [...network.buses.map(b => `<tr><td>Bus</td><td>${escapeHtml(b.name || b.id)}</td><td>${escapeHtml(voltageLabel(b.kv_ll))}</td><td></td></tr>`), ...network.branches.map(br => `<tr><td>${escapeHtml(br.kind || "branch")}</td><td>${escapeHtml(br.name || br.id)}</td><td>${escapeHtml(branchConnectionText(br))}</td><td>${escapeHtml(branchRatingText(br))}</td></tr>`), ...network.sources.map(s => `<tr><td>${escapeHtml(s.kind || "source")}</td><td>${escapeHtml(s.name || s.id)}</td><td>${escapeHtml(busLabel(s.bus))} (${escapeHtml(sourceVoltageLabel(s))})</td><td>${escapeHtml(s.rating || "")}</td></tr>`)].join("");
   const warningRows = (report.warnings || []).map(w => `<li>${escapeHtml(w)}</li>`).join("") || "<li>No calculation warnings.</li>";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(network.project?.name || "FaultCalc report")}</title><style>body{font-family:Arial,sans-serif;color:#111827;margin:32px}h1{font-size:22px}h2{font-size:16px;margin-top:24px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#e5e7eb}.num{text-align:right}.meta{color:#4b5563}@media print{body{margin:18mm}}</style></head><body><h1>${escapeHtml(network.project?.name || "FaultCalc report")}</h1><p class="meta">Project ${escapeHtml(network.project?.number || "")} · Engineer ${escapeHtml(network.project?.engineer || "")} · Revision ${escapeHtml(network.project?.revision || "")}</p><p>${escapeHtml(network.project?.description || "")}</p><h2>Summary</h2><table><tr><th>Base MVA</th><th>Frequency</th><th>Prefault</th><th>Max 3PH</th><th>Max SLG</th></tr><tr><td>${fmt(report.base_mva,3)}</td><td>${fmt(report.frequency_hz,2)} Hz</td><td>${fmt(report.prefault_voltage_pu,3)} pu</td><td>${fmt(report.summary.max_3ph_ka,3)} kA at ${escapeHtml(report.summary.max_3ph_bus)}</td><td>${fmt(report.summary.max_slg_ka,3)} kA at ${escapeHtml(report.summary.max_slg_bus)}</td></tr></table><h2>Fault Results</h2><table><thead><tr><th>Bus</th><th>kV</th><th>Fault</th><th>Sym kA</th><th>Peak kA</th><th>Asym RMS kA</th><th>X/R</th><th>Ground kA</th></tr></thead><tbody>${resultRows}</tbody></table><h2>Equipment Schedule</h2><table><thead><tr><th>Type</th><th>Name</th><th>Connection</th><th>Rating</th></tr></thead><tbody>${scheduleRows}</tbody></table><h2>Warnings</h2><ul>${warningRows}</ul><h2>Method Appendix</h2><p>Calculations use per-unit sequence networks. Sources are shunts behind sequence impedance, branches are series sequence impedances, and each bus is solved for driving-point Thevenin impedance.</p><p>3PH: I = V / (Z1 + Zf). SLG: Ia = 3V / (Z1 + Z2 + Z0 + 3Zf). LL: line current = sqrt(3) * |V / (Z1 + Z2 + Zf)|. DLG uses the negative and zero sequence parallel path and reconstructs phase currents.</p><p>Fault impedance is converted from ohms with Zbase = kV^2 / MVA. Reported kA uses Ibase = MVA / (sqrt(3) * kV). This report does not include proprietary IEEE or ANSI multiplying-factor tables.</p></body></html>`;
 }
@@ -1708,14 +1768,14 @@ function fallbackSample() {
     frequency_hz:60,
     prefault_voltage_pu:1,
     options:{ fault_r_ohm:0, fault_x_ohm:0, duty_cycles:.5 },
-    buses:[{ id:"util_bus", name:"Utility bus", kv_ll:DEFAULT_SECONDARY_KV }],
+    buses:[{ id:"util_bus", name:"Utility bus", kv_ll:voltageKv(DEFAULT_UTILITY_VOLTAGE_KEY) }],
     branches:[],
-    sources:[{ id:"src_inf", kind:"utility", name:"Infinite utility", bus:"util_bus", z1_pu:{r:0.000001,x:0.0001}, z2_pu:{r:0.000001,x:0.0001}, z0_pu:{r:0.000001,x:0.0001}, has_z0:true, enabled:true, state:"in_service", rating:"infinite utility" }],
+    sources:[{ id:"src_inf", kind:"utility", name:"Infinite utility", bus:"util_bus", kv_ll:voltageKv(DEFAULT_UTILITY_VOLTAGE_KEY), z1_pu:{r:0.000001,x:0.0001}, z2_pu:{r:0.000001,x:0.0001}, z0_pu:{r:0.000001,x:0.0001}, has_z0:true, enabled:true, state:"in_service", rating:"infinite utility" }],
     notes:["Starter case for a simple single-line diagram."]
   };
 }
 
-window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch; window.resetModel = resetModel;
+window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.setSourceVoltage = setSourceVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch; window.resetModel = resetModel;
 boot();
 </script>
 </body>

@@ -18,7 +18,7 @@
     {
       "id": "util_bus",
       "name": "Utility bus",
-      "kv_ll": 0.6
+      "kv_ll": 12.470765814495916
     }
   ],
   "branches": [],
@@ -28,6 +28,8 @@
       "kind": "utility",
       "name": "Infinite utility",
       "bus": "util_bus",
+      "kv_ll": 12.470765814495916,
+      "state": "in_service",
       "z1_pu": {
         "r": 1e-6,
         "x": 0.0001

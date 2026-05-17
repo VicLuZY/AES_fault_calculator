@@ -202,7 +202,14 @@ mod tests {
             let model_response = model(&sample);
             assert_eq!(model_response["ok"], true);
             assert_eq!(model_response["domain"]["voltage_options"][0]["key"], "120");
-            assert_eq!(model_response["network"]["buses"][0]["kv_ll"], 0.6);
+            let utility_kv = model_response["network"]["buses"][0]["kv_ll"]
+                .as_f64()
+                .unwrap();
+            assert!((utility_kv - faultcalc_core::DEFAULT_UTILITY_KV_LL).abs() < 1e-12);
+            assert_eq!(
+                model_response["domain"]["sources"][0]["voltage_label"],
+                "12.5 kV"
+            );
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Impedance, Network, ProjectInfo, Result, Source};
+use crate::{Impedance, Network, ProjectInfo, Result, Source, DEFAULT_UTILITY_KV_LL};
 
 pub fn sample_network() -> Network {
     let mut n = Network::new(100.0);
@@ -10,13 +10,20 @@ pub fn sample_network() -> Network {
         description: "Single infinite utility starter model for the browser SLD workstation."
             .to_string(),
     };
-    n.add_bus("util_bus", "Utility bus", 0.6, 360.0, 320.0)
-        .unwrap();
+    n.add_bus(
+        "util_bus",
+        "Utility bus",
+        DEFAULT_UTILITY_KV_LL,
+        360.0,
+        320.0,
+    )
+    .unwrap();
     n.add_source(Source {
         id: "src_inf".to_string(),
         kind: "utility".to_string(),
         name: "Infinite utility".to_string(),
         bus: "util_bus".to_string(),
+        kv_ll: DEFAULT_UTILITY_KV_LL,
         state: "in_service".to_string(),
         z1_pu: Impedance::new(0.000001, 0.0001),
         z2_pu: Impedance::new(0.000001, 0.0001),

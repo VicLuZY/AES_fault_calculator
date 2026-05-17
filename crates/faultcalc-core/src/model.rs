@@ -15,6 +15,9 @@ fn default_enabled() -> bool {
     true
 }
 
+pub const DEFAULT_SECONDARY_KV_LL: f64 = 0.6;
+pub const DEFAULT_UTILITY_KV_LL: f64 = 12.470_765_814_495_916;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Network {
     #[serde(default)]
@@ -137,6 +140,8 @@ pub struct Source {
     #[serde(default)]
     pub name: String,
     pub bus: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub kv_ll: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub state: String,
     pub z1_pu: Impedance,
@@ -257,9 +262,21 @@ impl Network {
                 b.enabled = !b.state.contains("open") && b.state != "out_of_service";
             }
         }
+        let bus_voltage = self
+            .buses
+            .iter()
+            .map(|bus| (bus.id.clone(), bus.kv_ll))
+            .collect::<Vec<_>>();
         for s in &mut self.sources {
             if s.kind.is_empty() {
                 s.kind = default_source_kind();
+            }
+            if s.kv_ll <= 0.0 {
+                s.kv_ll = bus_voltage
+                    .iter()
+                    .find(|(id, _)| id == &s.bus)
+                    .map(|(_, kv_ll)| *kv_ll)
+                    .unwrap_or_else(|| default_kv_ll_for_source_kind(&s.kind));
             }
             if s.state.is_empty() {
                 s.state = if s.enabled {
@@ -350,6 +367,14 @@ impl Network {
         if source.kind.is_empty() {
             source.kind = default_source_kind();
         }
+        if source.kv_ll <= 0.0 {
+            source.kv_ll = self
+                .buses
+                .iter()
+                .find(|bus| bus.id == source.bus)
+                .map(|bus| bus.kv_ll)
+                .unwrap_or_else(|| default_kv_ll_for_source_kind(&source.kind));
+        }
         self.sources.push(source);
         Ok(())
     }
@@ -381,6 +406,12 @@ impl Network {
             kind: "utility".to_string(),
             name: name.to_string(),
             bus: bus_id.to_string(),
+            kv_ll: self
+                .buses
+                .iter()
+                .find(|bus| bus.id == bus_id)
+                .map(|bus| bus.kv_ll)
+                .unwrap_or(DEFAULT_UTILITY_KV_LL),
             state: "in_service".to_string(),
             z1_pu: Impedance::from_complex(z1),
             z2_pu: Impedance::from_complex(z1),
@@ -533,10 +564,25 @@ impl Network {
             if !source.enabled {
                 continue;
             }
-            if self.bus_index(&source.bus).is_none() {
+            let bus_index = match self.bus_index(&source.bus) {
+                Some(index) => index,
+                None => {
+                    return Err(FaultCalcError::new(format!(
+                        "source {} references a missing bus",
+                        source.id
+                    )));
+                }
+            };
+            if source.kv_ll <= 0.0 {
                 return Err(FaultCalcError::new(format!(
-                    "source {} references a missing bus",
+                    "source {} has non-positive kv_ll",
                     source.id
+                )));
+            }
+            if (self.buses[bus_index].kv_ll - source.kv_ll).abs() > 1e-9 {
+                return Err(FaultCalcError::new(format!(
+                    "source {} voltage rating does not match bus {}",
+                    source.id, source.bus
                 )));
             }
             if source.z1_pu.to_complex().abs() < 1e-14 || source.z2_pu.to_complex().abs() < 1e-14 {
@@ -606,6 +652,14 @@ fn default_conductors_for_branch(kind: &str, secondary_connection: &str) -> Cond
         ground: vec!["EGC".to_string()],
         bond: vec!["BOND".to_string()],
         other: Vec::new(),
+    }
+}
+
+fn default_kv_ll_for_source_kind(kind: &str) -> f64 {
+    if kind == "load" {
+        DEFAULT_SECONDARY_KV_LL
+    } else {
+        DEFAULT_UTILITY_KV_LL
     }
 }
 
@@ -718,8 +772,17 @@ mod tests {
             .unwrap()
             .iter()
             .all(|b| b.get("x").is_none() && b.get("y").is_none()));
-        assert_eq!(case_value["buses"][0]["kv_ll"], 0.6);
+        assert_close(
+            case_value["buses"][0]["kv_ll"].as_f64().unwrap(),
+            DEFAULT_UTILITY_KV_LL,
+            1e-12,
+        );
         assert_eq!(case_value["branches"].as_array().unwrap().len(), 0);
+        assert_close(
+            case_value["sources"][0]["kv_ll"].as_f64().unwrap(),
+            DEFAULT_UTILITY_KV_LL,
+            1e-12,
+        );
         assert_eq!(case_value["sources"][0]["rating"], "infinite utility");
         let parsed = Network::from_json(&json).unwrap();
 

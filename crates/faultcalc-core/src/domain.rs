@@ -1,9 +1,12 @@
-use crate::{Branch, Impedance, Network, Result};
+use crate::{
+    Branch, Impedance, Network, Result, Source, DEFAULT_SECONDARY_KV_LL, DEFAULT_UTILITY_KV_LL,
+};
 use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
 
 const SQRT3: f64 = 1.732_050_807_568_877_2;
-const DEFAULT_SECONDARY_KV: f64 = 0.6;
+const DEFAULT_SECONDARY_KV: f64 = DEFAULT_SECONDARY_KV_LL;
+const DEFAULT_UTILITY_KV: f64 = DEFAULT_UTILITY_KV_LL;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct VoltageOption {
@@ -42,6 +45,18 @@ pub struct BranchDisplay {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct SourceDisplay {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub bus: String,
+    pub voltage_key: String,
+    pub voltage_label: String,
+    pub connection: String,
+    pub rating: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ScheduleRow {
     pub item_type: String,
     pub name: String,
@@ -62,6 +77,7 @@ pub struct CaseDomainView {
     pub voltage_options: Vec<VoltageOption>,
     pub buses: Vec<BusDisplay>,
     pub branches: Vec<BranchDisplay>,
+    pub sources: Vec<SourceDisplay>,
     pub schedule: Vec<ScheduleRow>,
     pub warnings: Vec<String>,
     pub summary: DomainSummary,
@@ -127,7 +143,9 @@ pub fn normalise_case(network: &mut Network) {
     for bus in &mut network.buses {
         bus.kv_ll = normalize_voltage_kv(bus.kv_ll);
     }
+    normalise_source_voltage_defaults(network);
     sync_conductor_voltage_groups(network);
+    sync_sources_to_terminal_voltage(network);
     for idx in 0..network.branches.len() {
         sync_transformer_derived_values(network, idx);
     }
@@ -196,6 +214,11 @@ fn case_domain_view(network: Network) -> CaseDomainView {
         .iter()
         .map(|branch| branch_display(&network, branch))
         .collect::<Vec<_>>();
+    let sources = network
+        .sources
+        .iter()
+        .map(|source| source_display(&network, source))
+        .collect::<Vec<_>>();
     let mut schedule = Vec::new();
     for bus in &network.buses {
         schedule.push(ScheduleRow {
@@ -213,15 +236,11 @@ fn case_domain_view(network: Network) -> CaseDomainView {
             rating: branch.rating.clone(),
         });
     }
-    for source in &network.sources {
+    for source in &sources {
         schedule.push(ScheduleRow {
             item_type: source.kind.clone(),
-            name: if source.name.is_empty() {
-                source.id.clone()
-            } else {
-                source.name.clone()
-            },
-            connection: bus_label(&network, &source.bus),
+            name: source.name.clone(),
+            connection: source.connection.clone(),
             rating: source.rating.clone(),
         });
     }
@@ -244,6 +263,7 @@ fn case_domain_view(network: Network) -> CaseDomainView {
         voltage_options: voltage_options(),
         buses,
         branches,
+        sources,
         schedule,
         warnings,
     }
@@ -300,6 +320,26 @@ fn branch_display(network: &Network, branch: &Branch) -> BranchDisplay {
         connection,
         rating,
         transformer,
+    }
+}
+
+fn source_display(network: &Network, source: &Source) -> SourceDisplay {
+    let name = source_display_name(source);
+    let voltage = source_voltage(network, source);
+    let connection = format!(
+        "{} ({})",
+        bus_label(network, &source.bus),
+        voltage_label(voltage)
+    );
+    SourceDisplay {
+        id: source.id.clone(),
+        name,
+        kind: source.kind.clone(),
+        bus: source.bus.clone(),
+        voltage_key: voltage_key(voltage),
+        voltage_label: voltage_label(voltage),
+        connection,
+        rating: source.rating.clone(),
     }
 }
 
@@ -370,6 +410,16 @@ fn model_warnings(network: &Network) -> Vec<String> {
         if !bus_ids.contains(source.bus.as_str()) {
             out.push(format!("{label} {name} references a missing bus."));
         }
+        if source.kv_ll <= 0.0 {
+            out.push(format!("{label} {name} has no voltage rating."));
+        }
+        if let Some(bus) = network.buses.iter().find(|bus| bus.id == source.bus) {
+            if voltage_key(bus.kv_ll) != voltage_key(source.kv_ll) {
+                out.push(format!(
+                    "{label} {name} voltage rating does not match its terminal bus."
+                ));
+            }
+        }
         if source.kind != "load" && !is_source_open(source) && source.rating.is_empty() {
             out.push(format!("Source {name} has no rating metadata."));
         }
@@ -382,6 +432,38 @@ fn model_warnings(network: &Network) -> Vec<String> {
         }
     }
     out
+}
+
+fn normalise_source_voltage_defaults(network: &mut Network) {
+    let bus_voltages = network
+        .buses
+        .iter()
+        .map(|bus| (bus.id.clone(), bus.kv_ll))
+        .collect::<Vec<_>>();
+    for source in &mut network.sources {
+        source.kv_ll = if source.kv_ll > 0.0 {
+            normalize_voltage_kv(source.kv_ll)
+        } else {
+            bus_voltages
+                .iter()
+                .find(|(id, _)| id == &source.bus)
+                .map(|(_, kv_ll)| normalize_voltage_kv(*kv_ll))
+                .unwrap_or_else(|| default_source_voltage(&source.kind))
+        };
+    }
+}
+
+fn sync_sources_to_terminal_voltage(network: &mut Network) {
+    let bus_voltages = network
+        .buses
+        .iter()
+        .map(|bus| (bus.id.clone(), bus.kv_ll))
+        .collect::<Vec<_>>();
+    for source in &mut network.sources {
+        if let Some((_, kv_ll)) = bus_voltages.iter().find(|(id, _)| id == &source.bus) {
+            source.kv_ll = normalize_voltage_kv(*kv_ll);
+        }
+    }
 }
 
 fn sync_transformer_derived_values(network: &mut Network, idx: usize) {
@@ -446,15 +528,60 @@ fn sync_conductor_voltage_groups(network: &mut Network) {
                 }
             }
         }
-        let anchor = members
-            .first()
-            .map(|id| bus_voltage(network, id))
+        let anchor = component_source_voltage(network, &members)
+            .or_else(|| members.first().map(|id| bus_voltage(network, id)))
             .unwrap_or(DEFAULT_SECONDARY_KV);
         for id in members {
             if let Some(bus) = network.buses.iter_mut().find(|bus| bus.id == id) {
                 bus.kv_ll = normalize_voltage_kv(anchor);
             }
         }
+    }
+}
+
+fn component_source_voltage(network: &Network, members: &[String]) -> Option<f64> {
+    let member_ids = members.iter().map(String::as_str).collect::<HashSet<_>>();
+    network
+        .sources
+        .iter()
+        .find(|source| {
+            source.kind != "load" && source.kv_ll > 0.0 && member_ids.contains(source.bus.as_str())
+        })
+        .or_else(|| {
+            network
+                .sources
+                .iter()
+                .find(|source| source.kv_ll > 0.0 && member_ids.contains(source.bus.as_str()))
+        })
+        .map(|source| normalize_voltage_kv(source.kv_ll))
+}
+
+fn source_voltage(network: &Network, source: &Source) -> f64 {
+    if source.kv_ll > 0.0 {
+        source.kv_ll
+    } else {
+        network
+            .buses
+            .iter()
+            .find(|bus| bus.id == source.bus)
+            .map(|bus| bus.kv_ll)
+            .unwrap_or_else(|| default_source_voltage(&source.kind))
+    }
+}
+
+fn source_display_name(source: &Source) -> String {
+    if source.name.is_empty() {
+        source.id.clone()
+    } else {
+        source.name.clone()
+    }
+}
+
+fn default_source_voltage(kind: &str) -> f64 {
+    if kind == "load" {
+        DEFAULT_SECONDARY_KV
+    } else {
+        DEFAULT_UTILITY_KV
     }
 }
 
@@ -678,7 +805,14 @@ mod tests {
         let json = crate::sample_json().unwrap();
         let view: serde_json::Value =
             serde_json::from_str(&case_domain_json(&json).unwrap()).unwrap();
-        assert_eq!(view["network"]["buses"][0]["kv_ll"], 0.6);
+        assert!(
+            (view["network"]["buses"][0]["kv_ll"].as_f64().unwrap() - DEFAULT_UTILITY_KV).abs()
+                < 1e-12
+        );
+        assert_eq!(
+            view["sources"][0]["voltage_label"],
+            serde_json::Value::String("12.5 kV".to_string())
+        );
         assert!(view["voltage_options"].as_array().unwrap().len() >= 10);
     }
 }
