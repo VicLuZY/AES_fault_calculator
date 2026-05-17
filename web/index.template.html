@@ -25,6 +25,19 @@
       --input: #ffffff;
       --surface: #ffffff;
       --shadow: 0 10px 22px rgba(24,36,52,.14);
+      --draw-bg: #fbfdff;
+      --draw-grid-minor: rgba(91,112,132,.16);
+      --draw-grid-major: rgba(62,82,101,.28);
+      --draw-ink: #182533;
+      --draw-muted: #55697c;
+      --draw-accent: #9b6a09;
+      --draw-select: #1769aa;
+      --draw-symbol-fill: #fbfdff;
+      --draw-fault-fill: #fff7dd;
+      --draw-fault-stroke: rgba(155,106,9,.7);
+      --bus-stroke: 7;
+      --wire-stroke: 1.4;
+      --symbol-stroke: 1.8;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
@@ -111,8 +124,52 @@
     .item-title { font-weight: 750; font-size: 13px; }
     .item-sub { color: var(--muted); font-size: 11px; margin-top: 3px; }
     .tag { display: inline-flex; align-items: center; gap: 4px; color: #263241; background: #eef4f9; border: 1px solid var(--line2); padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-right: 4px; }
-    .canvas-wrap { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #dce5ec; }
-    .canvas-frame { position: absolute; inset: 0; border: 0; overflow: hidden; background: linear-gradient(rgba(74,93,112,.13) 1px, transparent 1px), linear-gradient(90deg, rgba(74,93,112,.13) 1px, transparent 1px), #fbfdff; background-size: 28px 28px; }
+    .canvas-wrap {
+      min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #dce5ec;
+    }
+    .canvas-wrap.mode-cad {
+      --draw-bg: #0b1117;
+      --draw-grid-minor: rgba(69,108,128,.22);
+      --draw-grid-major: rgba(103,151,176,.35);
+      --draw-ink: #d9f3ff;
+      --draw-muted: #91b8ca;
+      --draw-accent: #f3c34f;
+      --draw-select: #58b7ff;
+      --draw-symbol-fill: #0b1117;
+      --draw-fault-fill: rgba(243,195,79,.15);
+      --draw-fault-stroke: rgba(243,195,79,.74);
+    }
+    .canvas-wrap.mode-light {
+      --draw-bg: #fbfdff;
+      --draw-grid-minor: rgba(91,112,132,.16);
+      --draw-grid-major: rgba(62,82,101,.28);
+      --draw-ink: #182533;
+      --draw-muted: #55697c;
+      --draw-accent: #9b6a09;
+      --draw-select: #1769aa;
+      --draw-symbol-fill: #fbfdff;
+      --draw-fault-fill: #fff7dd;
+      --draw-fault-stroke: rgba(155,106,9,.7);
+    }
+    .canvas-wrap.mode-print {
+      --draw-bg: #ffffff;
+      --draw-grid-minor: rgba(148,163,184,.12);
+      --draw-grid-major: rgba(71,85,105,.22);
+      --draw-ink: #111827;
+      --draw-muted: #374151;
+      --draw-accent: #111827;
+      --draw-select: #111827;
+      --draw-symbol-fill: #ffffff;
+      --draw-fault-fill: #ffffff;
+      --draw-fault-stroke: #111827;
+    }
+    .canvas-wrap.weight-thin { --bus-stroke: 5; --wire-stroke: 1; --symbol-stroke: 1.35; }
+    .canvas-wrap.weight-standard { --bus-stroke: 7; --wire-stroke: 1.4; --symbol-stroke: 1.8; }
+    .canvas-wrap.weight-bold { --bus-stroke: 9; --wire-stroke: 2; --symbol-stroke: 2.3; }
+    .canvas-frame {
+      position: absolute; inset: 0; border: 0; overflow: hidden; background: var(--draw-bg);
+      box-shadow: inset 0 0 0 1px rgba(18,24,31,.18);
+    }
     svg { width: 100%; height: 100%; display: block; }
     .canvas-title { position: absolute; left: 12px; top: 10px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
     .legend { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; font-size: 11px; color: var(--muted); z-index: 2; }
@@ -121,6 +178,10 @@
     .canvas-tools { position: absolute; left: 12px; top: 42px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
     .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
     .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
+    .mode-cad .tool-check, .mode-cad .compact-select, .mode-cad .canvas-title .tag, .mode-cad .legend span {
+      background: rgba(7,12,17,.88); border-color: rgba(130,168,190,.42); color: #bfd8e7;
+    }
+    .mode-cad .canvas-title, .mode-cad .canvas-note, .mode-cad .legend { color: #9fbdcc; }
     .tool-check input { width: auto; }
     .compact-select { width: auto; min-width: 88px; height: 28px; padding: 4px 28px 4px 7px; font-size: 12px; background-color: rgba(255,255,255,.96); }
     .model-summary { position: absolute; left: 12px; bottom: 36px; width: min(480px, calc(100% - 24px)); z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none; }
@@ -149,30 +210,37 @@
     .muted { color: var(--muted); }
     .raw-json { min-height: 280px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; }
     .hidden { display: none !important; }
-    .busbar { stroke: #263241; stroke-width: 7; stroke-linecap: square; cursor: move; }
-    .bus-tick { stroke: #263241; stroke-width: 2; pointer-events: none; }
+    .cad-grid-minor { stroke: var(--draw-grid-minor); stroke-width: .55; pointer-events: none; shape-rendering: crispEdges; }
+    .cad-grid-major { stroke: var(--draw-grid-major); stroke-width: .85; pointer-events: none; shape-rendering: crispEdges; }
+    .sheet-frame, .title-block { fill: none; stroke: var(--draw-muted); stroke-width: 1.1; pointer-events: none; shape-rendering: crispEdges; }
+    .title-cell { fill: rgba(255,255,255,.02); stroke: var(--draw-muted); stroke-width: .9; pointer-events: none; }
+    .title-text { fill: var(--draw-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; font-weight: 700; pointer-events: none; }
+    .title-small { fill: var(--draw-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 7.5px; pointer-events: none; }
+    .labels-hidden .svg-label, .labels-hidden .svg-small, .labels-hidden .equip-label, .labels-hidden .fault-chip, .labels-hidden .fault-chip-text { display: none; }
+    .busbar { stroke: var(--draw-ink); stroke-width: var(--bus-stroke); stroke-linecap: square; cursor: move; shape-rendering: crispEdges; }
+    .bus-tick { stroke: var(--draw-ink); stroke-width: 1.8; pointer-events: none; shape-rendering: crispEdges; }
     .bus-hit { fill: transparent; stroke: transparent; cursor: move; }
-    .bus-selection { fill: transparent; stroke: var(--blue); stroke-width: 1.6; stroke-dasharray: 7 5; pointer-events: none; }
-    .svg-label { fill: #17212b; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
-    .svg-small { fill: #596879; font-size: 10px; pointer-events: none; user-select: none; }
-    .branch-line { stroke: #344254; stroke-width: 1.4; fill: none; }
-    .branch-line.feeder, .branch-line.transformer, .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: #344254; }
+    .bus-selection { fill: transparent; stroke: var(--draw-select); stroke-width: 1.6; stroke-dasharray: 7 5; pointer-events: none; }
+    .svg-label { fill: var(--draw-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 800; pointer-events: none; user-select: none; }
+    .svg-small { fill: var(--draw-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; pointer-events: none; user-select: none; }
+    .branch-line { stroke: var(--draw-ink); stroke-width: var(--wire-stroke); fill: none; shape-rendering: geometricPrecision; }
+    .branch-line.feeder, .branch-line.transformer, .branch-line.breaker, .branch-line.switch, .branch-line.tie { stroke: var(--draw-ink); }
     .branch-line.open { stroke-dasharray: 9 8; opacity: .55; }
     .branch-hit { stroke: transparent; stroke-width: 20; fill: none; cursor: pointer; }
-    .branch-selected { stroke: var(--blue); stroke-width: 4.5; }
+    .branch-selected { stroke: var(--draw-select); stroke-width: calc(var(--wire-stroke) + 3); }
     .sld-element .terminal-add { opacity: 0; pointer-events: none; transition: opacity .12s ease; }
     .sld-element:hover .terminal-add { opacity: 1; pointer-events: auto; }
-    .terminal-add circle { fill: #ffffff; stroke: var(--blue); stroke-width: 1.6; }
-    .terminal-add text { fill: var(--blue); font-size: 16px; font-weight: 900; pointer-events: none; user-select: none; }
+    .terminal-add circle { fill: var(--draw-symbol-fill); stroke: var(--draw-select); stroke-width: 1.6; }
+    .terminal-add text { fill: var(--draw-select); font-size: 16px; font-weight: 900; pointer-events: none; user-select: none; }
     .add-menu { position: absolute; z-index: 7; min-width: 190px; border: 1px solid var(--line2); background: #ffffff; box-shadow: var(--shadow); padding: 6px; display: grid; gap: 5px; }
     .add-menu button { width: 100%; text-align: left; padding: 7px 9px; }
     .add-menu .menu-title { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; padding: 2px 3px 4px; }
-    .equip-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
-    .equip-label { fill: #17212b; font-size: 9px; font-weight: 800; pointer-events: none; }
-    .source-symbol { fill: #fbfdff; stroke: #263241; stroke-width: 1.8; cursor: pointer; }
-    .source-selected { stroke: var(--blue); stroke-width: 3; }
-    .fault-chip { fill: #fff7dd; stroke: rgba(155,106,9,.7); stroke-width: 1; rx: 2; pointer-events: none; }
-    .fault-chip-text { fill: #4e3500; font-size: 10px; font-weight: 800; pointer-events: none; }
+    .equip-symbol { fill: var(--draw-symbol-fill); stroke: var(--draw-ink); stroke-width: var(--symbol-stroke); cursor: pointer; }
+    .equip-label { fill: var(--draw-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; font-weight: 800; pointer-events: none; }
+    .source-symbol { fill: var(--draw-symbol-fill); stroke: var(--draw-ink); stroke-width: var(--symbol-stroke); cursor: pointer; }
+    .source-selected { stroke: var(--draw-select); stroke-width: calc(var(--symbol-stroke) + 1.2); }
+    .fault-chip { fill: var(--draw-fault-fill); stroke: var(--draw-fault-stroke); stroke-width: 1; rx: 2; pointer-events: none; }
+    .fault-chip-text { fill: var(--draw-accent); font-size: 10px; font-weight: 800; pointer-events: none; }
     .danger-text { fill: #b4232f; }
     .mini-table { font-size: 11px; }
     .mini-table th, .mini-table td { padding: 5px 6px; }
@@ -287,6 +355,20 @@
       <div class="canvas-tools">
         <button id="btnDeleteSelected" class="small danger">Delete</button>
         <span class="tool-sep" aria-hidden="true"></span>
+        <select id="renderStyle" class="compact-select" aria-label="Drawing style">
+          <option value="cad">CAD</option>
+          <option value="light">Light</option>
+          <option value="print">Print</option>
+        </select>
+        <select id="lineWeight" class="compact-select" aria-label="Lineweight">
+          <option value="thin">Thin</option>
+          <option value="standard">Std</option>
+          <option value="bold">Bold</option>
+        </select>
+        <label class="tool-check"><input id="showGrid" type="checkbox" checked> Grid</label>
+        <label class="tool-check"><input id="showLabels" type="checkbox" checked> Labels</label>
+        <label class="tool-check"><input id="showTitleBlock" type="checkbox" checked> Title</label>
+        <span class="tool-sep" aria-hidden="true"></span>
         <button id="btnZoomOut" class="small ghost">-</button>
         <button id="btnZoomIn" class="small ghost">+</button>
         <button id="btnZoomFit" class="small ghost">Fit</button>
@@ -375,6 +457,48 @@ let VOLTAGE_OPTIONS = [
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const CASE_VERSION_KEY = "faultcalc-workstation-case-version";
 const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout-v2";
+const DRAWING_PREFS_KEY = "faultcalc-workstation-drawing-v1";
+let drawingPrefs = loadDrawingPrefs();
+
+function loadDrawingPrefs() {
+  const defaults = { style:"cad", lineWeight:"standard", grid:true, labels:true, titleBlock:true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAWING_PREFS_KEY) || "null");
+    return { ...defaults, ...(saved && typeof saved === "object" ? saved : {}) };
+  } catch {
+    return defaults;
+  }
+}
+function saveDrawingPrefs() {
+  try {
+    localStorage.setItem(DRAWING_PREFS_KEY, JSON.stringify(drawingPrefs));
+  } catch {
+    // Display preferences are optional; the model remains unaffected.
+  }
+}
+function syncDrawingControls() {
+  const style = $("renderStyle"), lineWeight = $("lineWeight"), grid = $("showGrid"), labels = $("showLabels"), title = $("showTitleBlock");
+  if (style) style.value = drawingPrefs.style;
+  if (lineWeight) lineWeight.value = drawingPrefs.lineWeight;
+  if (grid) grid.checked = !!drawingPrefs.grid;
+  if (labels) labels.checked = !!drawingPrefs.labels;
+  if (title) title.checked = !!drawingPrefs.titleBlock;
+}
+function applyDrawingPreferences() {
+  const wrap = document.querySelector(".canvas-wrap");
+  if (!wrap) return;
+  wrap.classList.remove("mode-cad", "mode-light", "mode-print", "weight-thin", "weight-standard", "weight-bold", "labels-hidden");
+  wrap.classList.add(`mode-${["cad","light","print"].includes(drawingPrefs.style) ? drawingPrefs.style : "cad"}`);
+  wrap.classList.add(`weight-${["thin","standard","bold"].includes(drawingPrefs.lineWeight) ? drawingPrefs.lineWeight : "standard"}`);
+  wrap.classList.toggle("labels-hidden", !drawingPrefs.labels);
+}
+function updateDrawingPreference(path, value) {
+  drawingPrefs[path] = value;
+  saveDrawingPrefs();
+  syncDrawingControls();
+  if (path === "titleBlock") fitCanvas();
+  renderCanvas();
+}
 
 async function boot() {
   wireEvents();
@@ -476,6 +600,12 @@ function wireEvents() {
   $("btnZoomIn").onclick = () => zoomAt(0.82);
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
+  syncDrawingControls();
+  $("renderStyle").onchange = () => updateDrawingPreference("style", $("renderStyle").value);
+  $("lineWeight").onchange = () => updateDrawingPreference("lineWeight", $("lineWeight").value);
+  $("showGrid").onchange = () => updateDrawingPreference("grid", $("showGrid").checked);
+  $("showLabels").onchange = () => updateDrawingPreference("labels", $("showLabels").checked);
+  $("showTitleBlock").onchange = () => updateDrawingPreference("titleBlock", $("showTitleBlock").checked);
   $("snapGrid").onchange = () => { snapGrid = $("snapGrid").checked; };
   $("btnRefreshJson").onclick = refreshJson;
   $("btnApplyJson").onclick = applyJson;
@@ -1204,14 +1334,119 @@ function syncEnabledFromState(obj) { const state = String(obj.state || ""); obj.
 function renderCanvas() {
   const svg = $("oneLine");
   ensureLayout();
+  applyDrawingPreferences();
+  const gridSvg = drawingPrefs.grid ? renderCadGrid() : "";
   const branchSvg = network.branches.map(renderBranch).join("");
   const sourceSvg = network.sources.map(renderSource).join("");
   const busSvg = network.buses.map(renderBus).join("");
+  const sheetSvg = drawingPrefs.titleBlock ? renderSheetFrame() : "";
   svg.setAttribute("viewBox", `${canvasView.x} ${canvasView.y} ${canvasView.w} ${canvasView.h}`);
-  svg.innerHTML = branchSvg + sourceSvg + busSvg;
+  svg.innerHTML = gridSvg + branchSvg + sourceSvg + busSvg + sheetSvg;
   svg.onpointerdown = startCanvasPan; svg.onpointermove = onCanvasMove; svg.onpointerup = endDrag; svg.onpointerleave = endDrag; svg.onwheel = onCanvasWheel;
   const sub = $("canvasSubtitle");
-  if (sub) sub.textContent = "hover bus terminals or cable midpoint to add/insert";
+  if (sub) sub.textContent = `${drawingPrefs.style.toUpperCase()} view - hover terminals or cable midpoint to add/insert`;
+}
+function renderCadGrid() {
+  const minor = GRID;
+  const major = GRID * 5;
+  const x0 = Math.floor(canvasView.x / minor) * minor;
+  const x1 = canvasView.x + canvasView.w;
+  const y0 = Math.floor(canvasView.y / minor) * minor;
+  const y1 = canvasView.y + canvasView.h;
+  const lines = [];
+  for (let x = x0; x <= x1; x += minor) {
+    lines.push(`<line class="${Math.round(x / major) === x / major ? "cad-grid-major" : "cad-grid-minor"}" x1="${fmt(x,1)}" y1="${fmt(y0,1)}" x2="${fmt(x,1)}" y2="${fmt(y1,1)}"/>`);
+  }
+  for (let y = y0; y <= y1; y += minor) {
+    lines.push(`<line class="${Math.round(y / major) === y / major ? "cad-grid-major" : "cad-grid-minor"}" x1="${fmt(x0,1)}" y1="${fmt(y,1)}" x2="${fmt(x1,1)}" y2="${fmt(y,1)}"/>`);
+  }
+  return `<g aria-hidden="true">${lines.join("")}</g>`;
+}
+function drawingBounds(includeTitleBlock=false) {
+  const xs = [], ys = [];
+  for (const bus of network?.buses || []) {
+    const p = busPos(bus.id);
+    xs.push(p.x - BUS_WIDTH / 2 - 70, p.x + BUS_WIDTH / 2 + 70);
+    ys.push(p.y - 110, p.y + 130);
+  }
+  for (const source of network?.sources || []) {
+    const kind = source.kind || "utility";
+    const anchor = busTerminalPoint(source.bus, kind === "load" ? "bottom" : "top");
+    const sy = kind === "load" ? anchor.y + 96 : anchor.y - 96;
+    xs.push(anchor.x - 90, anchor.x + 90);
+    ys.push(Math.min(anchor.y, sy) - 62, Math.max(anchor.y, sy) + 62);
+  }
+  for (const branch of network?.branches || []) {
+    for (const point of branchPoints(branch)) {
+      xs.push(point.x - 64, point.x + 64);
+      ys.push(point.y - 64, point.y + 64);
+    }
+  }
+  if (!xs.length) return { minX:0, minY:0, maxX:1100, maxY:620 };
+  const base = { minX:Math.min(...xs), minY:Math.min(...ys), maxX:Math.max(...xs), maxY:Math.max(...ys) };
+  if (!includeTitleBlock) return base;
+  const title = titleBlockBounds(base);
+  return {
+    minX:Math.min(base.minX, title.x),
+    minY:Math.min(base.minY, title.y),
+    maxX:Math.max(base.maxX, title.x + title.w),
+    maxY:Math.max(base.maxY, title.y + title.h)
+  };
+}
+function titleBlockBounds(bounds) {
+  const w = 390, h = 118;
+  return {
+    x:Math.max(bounds.minX, bounds.maxX - w),
+    y:bounds.maxY + 72,
+    w,
+    h
+  };
+}
+function renderSheetFrame() {
+  const bounds = drawingBounds(false);
+  const title = titleBlockBounds(bounds);
+  const pad = 56;
+  const x = Math.min(bounds.minX, title.x) - pad;
+  const y = bounds.minY - pad;
+  const w = Math.max(bounds.maxX, title.x + title.w) - x + pad;
+  const h = title.y + title.h - y + pad;
+  const project = network?.project || {};
+  const titleText = escapeHtml(project.name || "AES simple SLD study");
+  const job = escapeHtml(project.number || "UNASSIGNED");
+  const rev = escapeHtml(project.revision || "A");
+  const engineer = escapeHtml(project.engineer || "");
+  const date = localDateStamp();
+  const busCount = network?.buses?.length || 0;
+  const branchCount = network?.branches?.length || 0;
+  const tx = title.x, ty = title.y;
+  return `<g aria-hidden="true">
+    <rect class="sheet-frame" x="${fmt(x,1)}" y="${fmt(y,1)}" width="${fmt(w,1)}" height="${fmt(h,1)}"/>
+    <rect class="title-block" x="${fmt(tx,1)}" y="${fmt(ty,1)}" width="${title.w}" height="${title.h}"/>
+    <line class="title-block" x1="${tx}" y1="${ty+32}" x2="${tx+title.w}" y2="${ty+32}"/>
+    <line class="title-block" x1="${tx}" y1="${ty+66}" x2="${tx+title.w}" y2="${ty+66}"/>
+    <line class="title-block" x1="${tx+214}" y1="${ty+32}" x2="${tx+214}" y2="${ty+title.h}"/>
+    <line class="title-block" x1="${tx+300}" y1="${ty+66}" x2="${tx+300}" y2="${ty+title.h}"/>
+    <text class="title-small" x="${tx+10}" y="${ty+13}">DRAWING</text>
+    <text class="title-text" x="${tx+10}" y="${ty+27}">SINGLE-LINE DIAGRAM</text>
+    <text class="title-small" x="${tx+10}" y="${ty+48}">PROJECT</text>
+    <text class="title-text" x="${tx+10}" y="${ty+62}">${titleText}</text>
+    <text class="title-small" x="${tx+10}" y="${ty+83}">JOB</text>
+    <text class="title-text" x="${tx+10}" y="${ty+99}">${job}</text>
+    <text class="title-small" x="${tx+224}" y="${ty+48}">ENGINEER</text>
+    <text class="title-text" x="${tx+224}" y="${ty+62}">${engineer || "-"}</text>
+    <text class="title-small" x="${tx+224}" y="${ty+83}">DATE</text>
+    <text class="title-text" x="${tx+224}" y="${ty+99}">${date}</text>
+    <text class="title-small" x="${tx+310}" y="${ty+83}">REV</text>
+    <text class="title-text" x="${tx+310}" y="${ty+99}">${rev}</text>
+    <text class="title-small" x="${tx+310}" y="${ty+48}">MODEL</text>
+    <text class="title-text" x="${tx+310}" y="${ty+62}">${busCount}B/${branchCount}E</text>
+  </g>`;
+}
+function localDateStamp() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 function busPos(id) {
   ensureLayout();
@@ -1284,16 +1519,16 @@ function branchSymbol(br, x, y) {
   const state = br.state || (br.enabled === false ? "normally_open" : "normally_closed");
   if (kind === "transformer") {
     const p = connectionGlyph(br.primary_connection || "grounded_wye"), s = connectionGlyph(br.secondary_connection || "grounded_wye");
-    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-14}" cy="${y}" r="12"/><circle class="equip-symbol" cx="${x+14}" cy="${y}" r="12"/><line x1="${x-2}" y1="${y-14}" x2="${x-2}" y2="${y+14}" stroke="#263241" stroke-width="1"/><text class="equip-label" x="${x-14}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+14}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-14}" cy="${y}" r="12"/><circle class="equip-symbol" cx="${x+14}" cy="${y}" r="12"/><line x1="${x-2}" y1="${y-14}" x2="${x-2}" y2="${y+14}" stroke="var(--draw-ink)" stroke-width="1"/><text class="equip-label" x="${x-14}" y="${y+4}" text-anchor="middle">${p}</text><text class="equip-label" x="${x+14}" y="${y+4}" text-anchor="middle">${s}</text></g>`;
   }
   if (kind === "breaker" || kind === "tie") {
-    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-19}" y="${y-10}" width="38" height="20" rx="0"/><line x1="${x-12}" y1="${y}" x2="${x+12}" y2="${y}" stroke="#263241" stroke-width="1.8"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
+    return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-19}" y="${y-10}" width="38" height="20" rx="0"/><line x1="${x-12}" y1="${y}" x2="${x+12}" y2="${y}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/><text class="equip-label" x="${x}" y="${y+4}" text-anchor="middle">${kind === "tie" ? "TIE" : "CB"}</text><text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
   if (kind === "switch") {
-    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="#263241" stroke-width="1.8"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="#263241" stroke-width="1.8"/>`;
+    const blade = isOpen(br) ? `<line x1="${x-16}" y1="${y}" x2="${x+7}" y2="${y-13}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/>` : `<line x1="${x-16}" y1="${y}" x2="${x+16}" y2="${y}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/>`;
     return `<g onclick="selectItem('branch','${br.id}')"><circle class="equip-symbol" cx="${x-19}" cy="${y}" r="3"/><circle class="equip-symbol" cx="${x+19}" cy="${y}" r="3"/>${blade}<text class="svg-small" x="${x}" y="${y+23}" text-anchor="middle">${stateLabel(state)}</text></g>`;
   }
-  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-16}" y="${y-8}" width="32" height="16" rx="0"/><line x1="${x-9}" y1="${y+6}" x2="${x+9}" y2="${y-6}" stroke="#263241" stroke-width="1.8"/></g>`;
+  return `<g onclick="selectItem('branch','${br.id}')"><rect class="equip-symbol" x="${x-16}" y="${y-8}" width="32" height="16" rx="0"/><line x1="${x-9}" y1="${y+6}" x2="${x+9}" y2="${y-6}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/></g>`;
 }
 function connectionGlyph(v) { return v === "delta" ? "D" : v === "grounding" ? "G" : v === "wye" ? "Y" : "Yg"; }
 function stateLabel(v) {
@@ -1317,7 +1552,7 @@ function renderSource(s) {
   const voltageY = kind === "load" ? sy + 45 : sy - 20;
   const symbol = kind === "load"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
-    : `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="#263241" stroke-width="1.6"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="#263241" stroke-width="1.3"/>`;
+    : `<rect class="source-symbol ${sel ? "source-selected" : ""}" x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="var(--draw-ink)" stroke-width="var(--symbol-stroke)"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="var(--draw-ink)" stroke-width="var(--wire-stroke)"/>`;
   return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
 }
 function renderBus(b) {
@@ -1408,8 +1643,9 @@ function zoomAt(factor, center) {
 function fitCanvas() {
   if (!network.buses.length) { canvasView = { x:0, y:0, w:1100, h:620 }; return; }
   ensureLayout();
-  const xs = network.buses.map(b => num(layout.buses[b.id]?.x)), ys = network.buses.map(b => num(layout.buses[b.id]?.y));
-  const minX = Math.min(...xs) - 240, maxX = Math.max(...xs) + 240, minY = Math.min(...ys) - 300, maxY = Math.max(...ys) + 240;
+  const bounds = drawingBounds(!!drawingPrefs.titleBlock);
+  const margin = drawingPrefs.titleBlock ? 96 : 180;
+  const minX = bounds.minX - margin, maxX = bounds.maxX + margin, minY = bounds.minY - margin, maxY = bounds.maxY + margin;
   canvasView = { x:minX, y:minY, w:Math.max(720, maxX-minX), h:Math.max(500, maxY-minY) };
 }
 
