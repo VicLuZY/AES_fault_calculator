@@ -180,12 +180,26 @@
     .canvas-tools { position: absolute; left: 12px; top: 42px; right: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; z-index: 3; }
     .canvas-tools .tool-sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
     .tool-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.94); border-radius: 3px; padding: 5px 8px; }
-    .mode-cad .tool-check, .mode-cad .compact-select, .mode-cad .canvas-title .tag, .mode-cad .legend span {
+    .mode-cad .tool-check, .mode-cad .compact-select, .mode-cad .canvas-title .tag, .mode-cad .legend span, .mode-cad .voltage-color-panel {
       background: rgba(7,12,17,.88); border-color: rgba(130,168,190,.42); color: #bfd8e7;
     }
     .mode-cad .canvas-title, .mode-cad .canvas-note, .mode-cad .legend { color: #9fbdcc; }
     .tool-check input { width: auto; }
     .compact-select { width: auto; min-width: 88px; height: 28px; padding: 4px 28px 4px 7px; font-size: 12px; background-color: rgba(255,255,255,.96); }
+    .voltage-color-panel {
+      position: absolute; left: 12px; top: 78px; width: min(420px, calc(100% - 24px)); max-height: min(520px, calc(100% - 112px)); overflow: auto;
+      z-index: 6; border: 1px solid var(--line2); background: rgba(255,255,255,.97); box-shadow: var(--shadow); padding: 8px; color: var(--ink);
+    }
+    .voltage-color-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+    .voltage-color-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    .voltage-color-actions { display: flex; gap: 6px; }
+    .voltage-color-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .voltage-color-row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 7px; border: 1px solid var(--line); background: rgba(255,255,255,.78); padding: 5px 6px; min-width: 0; }
+    .mode-cad .voltage-color-row { background: rgba(9,18,25,.74); border-color: rgba(130,168,190,.26); }
+    .voltage-color-row.in-use { border-color: var(--blue); }
+    .voltage-color-row input[type="color"] { width: 30px; height: 24px; padding: 1px; border: 1px solid var(--line2); background: transparent; cursor: pointer; }
+    .voltage-color-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; }
+    .voltage-color-state { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
     .model-summary { position: absolute; left: 12px; bottom: 36px; width: min(480px, calc(100% - 24px)); z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none; }
     .model-metric { border: 1px solid rgba(151,167,182,.88); background: rgba(255,255,255,.92); padding: 6px 7px; }
     .model-metric .label { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
@@ -355,10 +369,12 @@
     <section class="canvas-wrap">
       <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable single-line diagram"></svg></div>
       <div id="connectionMenu" class="add-menu hidden"></div>
+      <div id="voltageColorPanel" class="voltage-color-panel hidden"></div>
       <div class="canvas-title"><span class="tag">single-line diagram</span><span id="canvasSubtitle">hover terminals to add connections</span></div>
       <div class="canvas-tools">
         <button id="btnDeleteSelected" class="small danger">Delete</button>
         <span class="tool-sep" aria-hidden="true"></span>
+        <button id="btnVoltageColors" class="small ghost">Colours</button>
         <select id="renderStyle" class="compact-select" aria-label="Drawing style">
           <option value="cad">CAD</option>
           <option value="light">Light</option>
@@ -458,20 +474,46 @@ let VOLTAGE_OPTIONS = [
   { key:"8000r3", label:"8000*sqrt(3) V (13.8 kV)", display:"13.8 kV", volts:8000 * SQRT3, kv_ll:8000 * SQRT3 / 1000 },
   { key:"14400r3", label:"14400*sqrt(3) V (25 kV)", display:"25 kV", volts:14400 * SQRT3, kv_ll:14400 * SQRT3 / 1000 }
 ];
+const DEFAULT_VOLTAGE_COLORS = {
+  "120":"#60a5fa",
+  "120r3":"#a78bfa",
+  "240":"#38bdf8",
+  "160r3":"#f472b6",
+  "200r3":"#fb7185",
+  "480":"#22c55e",
+  "600":"#f59e0b",
+  "2400":"#14b8a6",
+  "2400r3":"#84cc16",
+  "7200r3":"#facc15",
+  "8000r3":"#fb923c",
+  "14400r3":"#ef4444"
+};
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const CASE_VERSION_KEY = "faultcalc-workstation-case-version";
 const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout-v3";
 const DRAWING_PREFS_KEY = "faultcalc-workstation-drawing-v1";
 let drawingPrefs = loadDrawingPrefs();
+let voltageColorPanelOpen = false;
 
 function loadDrawingPrefs() {
-  const defaults = { style:"cad", lineWeight:"standard", grid:true, labels:true, titleBlock:true };
+  const defaults = { style:"cad", lineWeight:"standard", grid:true, labels:true, titleBlock:true, voltageColors:{...DEFAULT_VOLTAGE_COLORS} };
   try {
     const saved = JSON.parse(localStorage.getItem(DRAWING_PREFS_KEY) || "null");
-    return { ...defaults, ...(saved && typeof saved === "object" ? saved : {}) };
+    const merged = { ...defaults, ...(saved && typeof saved === "object" ? saved : {}) };
+    merged.voltageColors = voltageColorMap(saved?.voltageColors);
+    return merged;
   } catch {
     return defaults;
   }
+}
+function voltageColorMap(source={}) {
+  const out = {...DEFAULT_VOLTAGE_COLORS};
+  for (const option of VOLTAGE_OPTIONS) out[option.key] = normalizeColor(source?.[option.key], out[option.key]);
+  return out;
+}
+function normalizeColor(value, fallback="#94a3b8") {
+  const text = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : fallback;
 }
 function saveDrawingPrefs() {
   try {
@@ -502,6 +544,22 @@ function updateDrawingPreference(path, value) {
   syncDrawingControls();
   if (path === "titleBlock") fitCanvas();
   renderCanvas();
+}
+function setVoltageColor(key, value) {
+  if (!VOLTAGE_OPTIONS.some(option => option.key === key)) return;
+  drawingPrefs.voltageColors = voltageColorMap(drawingPrefs.voltageColors);
+  drawingPrefs.voltageColors[key] = normalizeColor(value, DEFAULT_VOLTAGE_COLORS[key]);
+  saveDrawingPrefs();
+  renderCanvas();
+}
+function resetVoltageColors() {
+  drawingPrefs.voltageColors = {...DEFAULT_VOLTAGE_COLORS};
+  saveDrawingPrefs();
+  renderCanvas();
+}
+function toggleVoltageColorPanel(force) {
+  voltageColorPanelOpen = typeof force === "boolean" ? force : !voltageColorPanelOpen;
+  renderVoltageColorPanel();
 }
 
 async function boot() {
@@ -601,6 +659,7 @@ function wireEvents() {
   on("btnAutoLayout", () => { autoLayout(); layoutChanged(true); });
   on("btnResetCase", () => resetModel());
   on("btnDeleteSelected", deleteSelected);
+  on("btnVoltageColors", () => toggleVoltageColorPanel());
   $("btnZoomIn").onclick = () => zoomAt(0.82);
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
@@ -771,21 +830,8 @@ function voltageLabel(kv) {
   return option ? (option.display || option.label) : `${fmt(num(kv) * 1000, 0)} V`;
 }
 function voltageColor(kv) {
-  const palette = {
-    "120":"#60a5fa",
-    "120r3":"#a78bfa",
-    "240":"#38bdf8",
-    "160r3":"#f472b6",
-    "200r3":"#fb7185",
-    "480":"#22c55e",
-    "600":"#f59e0b",
-    "2400":"#14b8a6",
-    "2400r3":"#84cc16",
-    "7200r3":"#facc15",
-    "8000r3":"#fb923c",
-    "14400r3":"#ef4444"
-  };
-  return palette[voltageKey(kv)] || "#94a3b8";
+  const key = voltageKey(kv);
+  return normalizeColor(drawingPrefs?.voltageColors?.[key], DEFAULT_VOLTAGE_COLORS[key] || "#94a3b8");
 }
 function voltageStrokeStyle(kv) {
   return `stroke:${voltageColor(kv)}`;
@@ -811,6 +857,23 @@ function renderVoltageLegend() {
     .map(kv => `<span class="voltage-key" style="--voltage-color:${voltageColor(kv)}"><i class="voltage-dot"></i>${escapeHtml(voltageLabel(kv))}</span>`)
     .join("");
   legend.innerHTML = staticItems + voltageItems;
+}
+function renderVoltageColorPanel() {
+  const panel = $("voltageColorPanel");
+  if (!panel) return;
+  panel.classList.toggle("hidden", !voltageColorPanelOpen);
+  if (!voltageColorPanelOpen) return;
+  const used = new Set(voltageLegendItems().map(voltageKey));
+  const rows = VOLTAGE_OPTIONS.map(option => {
+    const color = normalizeColor(drawingPrefs?.voltageColors?.[option.key], DEFAULT_VOLTAGE_COLORS[option.key]);
+    const inUse = used.has(option.key);
+    return `<label class="voltage-color-row ${inUse ? "in-use" : ""}">
+      <input type="color" value="${color}" onchange="setVoltageColor('${jsArg(option.key)}', this.value)">
+      <span class="voltage-color-label">${escapeHtml(option.display || option.label)}</span>
+      <span class="voltage-color-state">${inUse ? "used" : ""}</span>
+    </label>`;
+  }).join("");
+  panel.innerHTML = `<div class="voltage-color-head"><div class="voltage-color-title">Voltage colours</div><div class="voltage-color-actions"><button class="small ghost" onclick="resetVoltageColors()">Reset</button><button class="small ghost" onclick="toggleVoltageColorPanel(false)">Close</button></div></div><div class="voltage-color-grid">${rows}</div>`;
 }
 function defaultSourceVoltage(kind="utility") {
   return kind === "load" ? DEFAULT_SECONDARY_KV : voltageKv(DEFAULT_UTILITY_VOLTAGE_KEY);
@@ -1382,6 +1445,7 @@ function renderCanvas() {
   ensureLayout();
   applyDrawingPreferences();
   renderVoltageLegend();
+  renderVoltageColorPanel();
   const gridSvg = drawingPrefs.grid ? renderCadGrid() : "";
   const branchSvg = network.branches.map(renderBranch).join("");
   const sourceSvg = network.sources.map(renderSource).join("");
@@ -2171,7 +2235,7 @@ function fallbackSample() {
   };
 }
 
-window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.setSourceVoltage = setSourceVoltage; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch; window.resetModel = resetModel;
+window.selectItem = selectItem; window.editSelected = editSelected; window.setBusVoltage = setBusVoltage; window.setSourceVoltage = setSourceVoltage; window.setVoltageColor = setVoltageColor; window.resetVoltageColors = resetVoltageColors; window.toggleVoltageColorPanel = toggleVoltageColorPanel; window.deleteSelected = deleteSelected; window.startBusDrag = startBusDrag; window.showAddMenu = showAddMenu; window.menuAddConnection = menuAddConnection; window.menuInsertOnBranch = menuInsertOnBranch; window.resetModel = resetModel;
 boot();
 </script>
 </body>
