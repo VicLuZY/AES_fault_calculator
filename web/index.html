@@ -171,6 +171,40 @@
       box-shadow: inset 0 0 0 1px rgba(18,24,31,.18);
     }
     svg { width: 100%; height: 100%; display: block; }
+    .display-tui .canvas-frame svg { display: none; }
+    .display-html .tui-panel { display: none; }
+    .display-tui .model-summary { display: none; }
+    .tui-panel {
+      position: absolute; inset: 0; overflow: auto; padding: 92px 18px 86px; background: var(--draw-bg); color: var(--draw-ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.35;
+    }
+    .tui-shell { min-width: 980px; display: grid; gap: 12px; }
+    .tui-band, .tui-box, .tui-table-wrap { border: 1px solid var(--draw-muted); background: rgba(255,255,255,.03); }
+    .mode-light .tui-band, .mode-light .tui-box, .mode-light .tui-table-wrap, .mode-print .tui-band, .mode-print .tui-box, .mode-print .tui-table-wrap { background: rgba(255,255,255,.78); }
+    .tui-band { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 0; }
+    .tui-metric { padding: 8px 10px; border-right: 1px solid var(--draw-muted); min-width: 0; }
+    .tui-metric:last-child { border-right: 0; }
+    .tui-k { color: var(--draw-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+    .tui-v { color: var(--draw-ink); font-weight: 800; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tui-section-title { color: var(--draw-accent); font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; margin: 2px 0 6px; }
+    .tui-lines { display: grid; gap: 7px; }
+    .tui-line { display: grid; grid-template-columns: minmax(170px, .9fr) 34px minmax(220px, 1.1fr) 34px minmax(170px, .9fr); gap: 7px; align-items: stretch; }
+    .tui-arrow { display: grid; place-items: center; color: var(--draw-muted); font-weight: 900; }
+    .tui-box { padding: 8px; min-height: 74px; cursor: pointer; position: relative; }
+    .tui-box.selected { outline: 2px solid var(--draw-select); outline-offset: -2px; }
+    .tui-type { color: var(--draw-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+    .tui-name { color: var(--draw-ink); font-weight: 900; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tui-detail { color: var(--draw-muted); margin-top: 4px; font-size: 11px; }
+    .tui-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .tui-actions button { min-height: 24px; padding: 3px 6px; font-size: 10px; }
+    .tui-tables { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .tui-table-wrap { overflow: auto; }
+    .tui-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .tui-table th, .tui-table td { border-bottom: 1px solid rgba(145,184,202,.32); padding: 6px 7px; white-space: nowrap; vertical-align: middle; }
+    .tui-table th { position: static; background: rgba(145,184,202,.13); color: var(--draw-muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+    .tui-table input, .tui-table select { height: 24px; min-height: 24px; padding: 2px 6px; font-size: 11px; }
+    .tui-issues { display: grid; gap: 4px; color: var(--draw-muted); }
+    .tui-empty { border: 1px dashed var(--draw-muted); padding: 12px; color: var(--draw-muted); }
     .canvas-title { position: absolute; left: 12px; top: 10px; display: flex; gap: 8px; align-items: center; color: #344254; font-size: 12px; z-index: 2; }
     .legend { position: absolute; right: 12px; top: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: min(760px, calc(100% - 24px)); font-size: 11px; color: var(--muted); z-index: 2; }
     .legend span { border: 1px solid var(--line); background: rgba(255,255,255,.92); border-radius: 3px; padding: 5px 7px; }
@@ -367,7 +401,7 @@
     </aside>
 
     <section class="canvas-wrap">
-      <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable single-line diagram"></svg></div>
+      <div class="canvas-frame"><svg id="oneLine" viewBox="0 0 1100 620" role="img" aria-label="Editable single-line diagram"></svg><div id="tuiPanel" class="tui-panel"></div></div>
       <div id="connectionMenu" class="add-menu hidden"></div>
       <div id="voltageColorPanel" class="voltage-color-panel hidden"></div>
       <div class="canvas-title"><span class="tag">single-line diagram</span><span id="canvasSubtitle">hover terminals to add connections</span></div>
@@ -375,6 +409,10 @@
         <button id="btnDeleteSelected" class="small danger">Delete</button>
         <span class="tool-sep" aria-hidden="true"></span>
         <button id="btnVoltageColors" class="small ghost">Colours</button>
+        <select id="displayMode" class="compact-select" aria-label="Display mode">
+          <option value="html">HTML</option>
+          <option value="tui">TUI</option>
+        </select>
         <select id="renderStyle" class="compact-select" aria-label="Drawing style">
           <option value="cad">CAD</option>
           <option value="light">Light</option>
@@ -496,7 +534,7 @@ let drawingPrefs = loadDrawingPrefs();
 let voltageColorPanelOpen = false;
 
 function loadDrawingPrefs() {
-  const defaults = { style:"cad", lineWeight:"standard", grid:true, labels:true, titleBlock:true, voltageColors:{...DEFAULT_VOLTAGE_COLORS} };
+  const defaults = { displayMode:"html", style:"cad", lineWeight:"standard", grid:true, labels:true, titleBlock:true, voltageColors:{...DEFAULT_VOLTAGE_COLORS} };
   try {
     const saved = JSON.parse(localStorage.getItem(DRAWING_PREFS_KEY) || "null");
     const merged = { ...defaults, ...(saved && typeof saved === "object" ? saved : {}) };
@@ -523,7 +561,8 @@ function saveDrawingPrefs() {
   }
 }
 function syncDrawingControls() {
-  const style = $("renderStyle"), lineWeight = $("lineWeight"), grid = $("showGrid"), labels = $("showLabels"), title = $("showTitleBlock");
+  const displayMode = $("displayMode"), style = $("renderStyle"), lineWeight = $("lineWeight"), grid = $("showGrid"), labels = $("showLabels"), title = $("showTitleBlock");
+  if (displayMode) displayMode.value = drawingPrefs.displayMode || "html";
   if (style) style.value = drawingPrefs.style;
   if (lineWeight) lineWeight.value = drawingPrefs.lineWeight;
   if (grid) grid.checked = !!drawingPrefs.grid;
@@ -533,7 +572,8 @@ function syncDrawingControls() {
 function applyDrawingPreferences() {
   const wrap = document.querySelector(".canvas-wrap");
   if (!wrap) return;
-  wrap.classList.remove("mode-cad", "mode-light", "mode-print", "weight-thin", "weight-standard", "weight-bold", "labels-hidden");
+  wrap.classList.remove("mode-cad", "mode-light", "mode-print", "weight-thin", "weight-standard", "weight-bold", "labels-hidden", "display-html", "display-tui");
+  wrap.classList.add(`display-${drawingPrefs.displayMode === "tui" ? "tui" : "html"}`);
   wrap.classList.add(`mode-${["cad","light","print"].includes(drawingPrefs.style) ? drawingPrefs.style : "cad"}`);
   wrap.classList.add(`weight-${["thin","standard","bold"].includes(drawingPrefs.lineWeight) ? drawingPrefs.lineWeight : "standard"}`);
   wrap.classList.toggle("labels-hidden", !drawingPrefs.labels);
@@ -664,6 +704,7 @@ function wireEvents() {
   $("btnZoomOut").onclick = () => zoomAt(1.22);
   $("btnZoomFit").onclick = () => { fitCanvas(); renderCanvas(); };
   syncDrawingControls();
+  $("displayMode").onchange = () => updateDrawingPreference("displayMode", $("displayMode").value);
   $("renderStyle").onchange = () => updateDrawingPreference("style", $("renderStyle").value);
   $("lineWeight").onchange = () => updateDrawingPreference("lineWeight", $("lineWeight").value);
   $("showGrid").onchange = () => updateDrawingPreference("grid", $("showGrid").checked);
@@ -1314,7 +1355,15 @@ function renderNavigator() {
     return `<div class="list-item ${sel ? "selected" : ""}" onclick="selectItem('${type}','${item.id}')"><div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(sub)}</div></div>`;
   }).join("") || `<div class="muted">No ${currentTab} yet.</div>`;
 }
-function selectItem(type, id) { selected = { type, id }; currentTab = type + "es"; if (type === "bus") currentTab = "buses"; if (type === "branch") currentTab = "branches"; if (type === "source") currentTab = "sources"; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab)); hideAddMenu(); render(); }
+function setSelectedNoRender(type, id) {
+  selected = { type, id };
+  currentTab = type + "es";
+  if (type === "bus") currentTab = "buses";
+  if (type === "branch") currentTab = "branches";
+  if (type === "source") currentTab = "sources";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === currentTab));
+}
+function selectItem(type, id) { setSelectedNoRender(type, id); hideAddMenu(); render(); }
 function selectedObj() { if (!selected.id) return null; const arr = selected.type === "bus" ? network.buses : selected.type === "branch" ? network.branches : network.sources; return arr.find(x => x.id === selected.id) || null; }
 function busLabel(id) { const b = network.buses.find(x => x.id === id); return b ? (b.name || b.id) : id; }
 
@@ -1440,12 +1489,120 @@ function editSelected(path, value, type, quiet=false) {
 function setPath(obj, path, value) { const parts = path.split("."); let o = obj; for (let i=0; i<parts.length-1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts.at(-1)] = value; }
 function syncEnabledFromState(obj) { const state = String(obj.state || ""); obj.enabled = !state.includes("open") && state !== "out_of_service"; }
 
+function tuiEdit(type, id, path, value, fieldType="text") {
+  setSelectedNoRender(type, id);
+  if (type === "bus" && path === "voltage") return setBusVoltage(id, value);
+  if (type === "source" && path === "voltage") return setSourceVoltage(id, value);
+  editSelected(path, value, fieldType);
+}
+function tuiInput(type, id, path, value, fieldType="text") {
+  return `<input value="${escapeHtml(value ?? "")}" onchange="tuiEdit('${jsArg(type)}','${jsArg(id)}','${jsArg(path)}', this.value, '${jsArg(fieldType)}')">`;
+}
+function tuiSelect(type, id, path, value, options) {
+  return `<select onchange="tuiEdit('${jsArg(type)}','${jsArg(id)}','${jsArg(path)}', this.value, 'text')">${options.map(option => `<option value="${escapeHtml(option)}" ${option===value?"selected":""}>${escapeHtml(option)}</option>`).join("")}</select>`;
+}
+function tuiVoltageSelect(type, id, value) {
+  return `<select onchange="tuiEdit('${jsArg(type)}','${jsArg(id)}','voltage', this.value, 'text')">${VOLTAGE_OPTIONS.map(option => `<option value="${option.key}" ${option.key===value?"selected":""}>${escapeHtml(option.display || option.label)}</option>`).join("")}</select>`;
+}
+function tuiBusSelect(type, id, path, value) {
+  return `<select onchange="tuiEdit('${jsArg(type)}','${jsArg(id)}','${jsArg(path)}', this.value, 'text')">${network.buses.map(bus => `<option value="${escapeHtml(bus.id)}" ${bus.id===value?"selected":""}>${escapeHtml(bus.name || bus.id)}</option>`).join("")}</select>`;
+}
+function renderTuiPanel() {
+  const panel = $("tuiPanel");
+  if (!panel) return;
+  if (drawingPrefs.displayMode !== "tui") { panel.innerHTML = ""; return; }
+  const warnings = validateLocal();
+  const metrics = [
+    ["Mode", "Text SLD"],
+    ["Engine", wasmReady ? "Rust WASM" : "Fallback"],
+    ["Buses", String(network.buses.length)],
+    ["Branches", String(network.branches.length)],
+    ["Sources", String(network.sources.length)],
+    ["Warnings", String(warnings.length + (report?.warnings?.length || 0))]
+  ];
+  panel.innerHTML = `<div class="tui-shell">
+    <div class="tui-band">${metrics.map(([k,v]) => `<div class="tui-metric"><div class="tui-k">${escapeHtml(k)}</div><div class="tui-v">${escapeHtml(v)}</div></div>`).join("")}</div>
+    <div><div class="tui-section-title">Text single-line diagram</div>${renderTuiSld()}</div>
+    <div><div class="tui-section-title">Editable parameter matrix</div><div class="tui-tables">${renderTuiBusTable()}${renderTuiBranchTable()}${renderTuiSourceTable()}</div></div>
+    <div><div class="tui-section-title">Checks and study</div>${renderTuiIssues(warnings)}</div>
+  </div>`;
+}
+function renderTuiSld() {
+  const rows = [];
+  for (const source of network.sources || []) {
+    rows.push(`<div class="tui-line">${tuiSourceBox(source)}<div class="tui-arrow">--</div>${tuiBusBox(network.buses.find(bus => bus.id === source.bus))}<div></div><div></div></div>`);
+  }
+  for (const branch of network.branches || []) {
+    rows.push(`<div class="tui-line">${tuiBusBox(network.buses.find(bus => bus.id === branch.from))}<div class="tui-arrow">--</div>${tuiBranchBox(branch)}<div class="tui-arrow">--</div>${tuiBusBox(network.buses.find(bus => bus.id === branch.to))}</div>`);
+  }
+  if (!rows.length) rows.push(...network.buses.map(bus => `<div class="tui-line"><div></div><div></div>${tuiBusBox(bus)}<div></div><div></div></div>`));
+  return `<div class="tui-lines">${rows.join("") || `<div class="tui-empty">No equipment in the model.</div>`}</div>`;
+}
+function tuiBoxClasses(type, id) {
+  return `tui-box ${selected.type === type && selected.id === id ? "selected" : ""}`;
+}
+function tuiBusBox(bus) {
+  if (!bus) return `<div class="tui-box"><div class="tui-type">missing bus</div></div>`;
+  const domain = busDomain(bus.id);
+  const r = busReport(bus.id);
+  const fault = r ? `3PH ${fmtKA(faultKA(r,"3PH"))} kA / SLG ${fmtKA(faultKA(r,"SLG"))} kA` : "study not run";
+  return `<div class="${tuiBoxClasses("bus", bus.id)}" onclick="selectItem('bus','${jsArg(bus.id)}')">
+    <div class="tui-type">[BUS]</div><div class="tui-name">${escapeHtml(bus.name || bus.id)}</div>
+    <div class="tui-detail">${escapeHtml(domain?.voltage_label || voltageLabel(bus.kv_ll))}<br>${escapeHtml(fault)}</div>
+    <div class="tui-actions"><button onclick="event.stopPropagation(); menuAddConnection('conductor','${jsArg(bus.id)}','right')">+ cable</button><button onclick="event.stopPropagation(); menuAddConnection('transformer','${jsArg(bus.id)}','right')">+ tx</button><button onclick="event.stopPropagation(); menuAddConnection('load','${jsArg(bus.id)}','right')">+ load</button></div>
+  </div>`;
+}
+function tuiBranchBox(branch) {
+  const domain = branchDomain(branch.id);
+  const tx = domain?.transformer;
+  const txText = tx ? `<br>${fmt(tx.kva,0)} kVA / ${fmt(tx.impedance_percent,2)}%Z / ${fmtA(tx.primary_rated_a)}A:${fmtA(tx.secondary_rated_a)}A` : "";
+  return `<div class="${tuiBoxClasses("branch", branch.id)}" onclick="selectItem('branch','${jsArg(branch.id)}')">
+    <div class="tui-type">[${escapeHtml((branch.kind || "feeder").toUpperCase())}]</div><div class="tui-name">${escapeHtml(branch.name || branch.id)}</div>
+    <div class="tui-detail">${escapeHtml(domain?.connection || branchConnectionText(branch))}<br>${escapeHtml(domain?.rating || branchRatingText(branch))}${txText}</div>
+    <div class="tui-actions"><button onclick="event.stopPropagation(); menuInsertOnBranch('bus','${jsArg(branch.id)}')">insert bus</button><button onclick="event.stopPropagation(); menuInsertOnBranch('transformer','${jsArg(branch.id)}')">insert tx</button></div>
+  </div>`;
+}
+function tuiSourceBox(source) {
+  const domain = domainView?.sources?.find(item => item.id === source.id);
+  return `<div class="${tuiBoxClasses("source", source.id)}" onclick="selectItem('source','${jsArg(source.id)}')">
+    <div class="tui-type">[${escapeHtml((source.kind || "source").toUpperCase())}]</div><div class="tui-name">${escapeHtml(source.name || source.id)}</div>
+    <div class="tui-detail">${escapeHtml(domain?.connection || `${busLabel(source.bus)} (${sourceVoltageLabel(source)})`)}<br>${escapeHtml(domain?.rating || source.rating || stateLabel(source.state))}</div>
+  </div>`;
+}
+function renderTuiBusTable() {
+  const rows = network.buses.map(bus => `<tr><td>${escapeHtml(bus.id)}</td><td>${tuiInput("bus", bus.id, "name", bus.name || bus.id)}</td><td>${tuiVoltageSelect("bus", bus.id, voltageKey(bus.kv_ll))}</td><td>${tuiInput("bus", bus.id, "notes", bus.notes || "")}</td><td><button onclick="selectItem('bus','${jsArg(bus.id)}')">Select</button></td></tr>`).join("");
+  return `<div class="tui-table-wrap"><table class="tui-table"><thead><tr><th colspan="5">Buses</th></tr><tr><th>ID</th><th>Name</th><th>Voltage</th><th>Notes</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5">No buses.</td></tr>`}</tbody></table></div>`;
+}
+function renderTuiBranchTable() {
+  const rows = network.branches.map(branch => {
+    const isTx = (branch.kind || "feeder") === "transformer";
+    return `<tr><td>${escapeHtml(branch.id)}</td><td>${tuiSelect("branch", branch.id, "kind", branch.kind || "feeder", ["feeder","transformer"])}</td><td>${tuiInput("branch", branch.id, "name", branch.name || branch.id)}</td><td>${tuiBusSelect("branch", branch.id, "from", branch.from)}</td><td>${tuiBusSelect("branch", branch.id, "to", branch.to)}</td><td>${tuiSelect("branch", branch.id, "state", branch.state || "normally_closed", ["normally_closed","normally_open","maintenance_open","study_closed","study_open"])}</td><td>${tuiSelect("branch", branch.id, "primary_connection", branch.primary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</td><td>${tuiSelect("branch", branch.id, "secondary_connection", branch.secondary_connection || "grounded_wye", ["grounded_wye","wye","delta","grounding"])}</td><td>${isTx ? tuiInput("branch", branch.id, "rating_kva", fmt(transformerKva(branch),0), "number") : tuiInput("branch", branch.id, "rating_a", branch.rating_a || "", "number")}</td><td>${isTx ? tuiInput("branch", branch.id, "impedance_percent", fmt(transformerPercentZ(branch),2), "number") : escapeHtml(`${fmt(num(branch.z1_pu?.r),4)} + j${fmt(num(branch.z1_pu?.x),4)}`)}</td><td><button onclick="selectItem('branch','${jsArg(branch.id)}')">Select</button></td></tr>`;
+  }).join("");
+  return `<div class="tui-table-wrap"><table class="tui-table"><thead><tr><th colspan="11">Branches</th></tr><tr><th>ID</th><th>Kind</th><th>Name</th><th>From</th><th>To</th><th>State</th><th>Pri</th><th>Sec</th><th>Rating</th><th>Z</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="11">No branches.</td></tr>`}</tbody></table></div>`;
+}
+function renderTuiSourceTable() {
+  const rows = network.sources.map(source => `<tr><td>${escapeHtml(source.id)}</td><td>${tuiSelect("source", source.id, "kind", source.kind || "utility", ["utility","source","load"])}</td><td>${tuiInput("source", source.id, "name", source.name || source.id)}</td><td>${tuiBusSelect("source", source.id, "bus", source.bus)}</td><td>${tuiVoltageSelect("source", source.id, voltageKey(sourceVoltage(source)))}</td><td>${tuiSelect("source", source.id, "state", source.state || (source.enabled === false ? "out_of_service" : "in_service"), ["in_service","out_of_service","maintenance_open","emergency_parallel"])}</td><td>${escapeHtml(`${fmt(num(source.z1_pu?.r),4)} + j${fmt(num(source.z1_pu?.x),4)}`)}</td><td>${tuiInput("source", source.id, "rating", source.rating || "")}</td><td><button onclick="selectItem('source','${jsArg(source.id)}')">Select</button></td></tr>`).join("");
+  return `<div class="tui-table-wrap"><table class="tui-table"><thead><tr><th colspan="9">Sources and loads</th></tr><tr><th>ID</th><th>Kind</th><th>Name</th><th>Bus</th><th>Voltage</th><th>State</th><th>Z1</th><th>Rating</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="9">No sources or loads.</td></tr>`}</tbody></table></div>`;
+}
+function renderTuiIssues(warnings) {
+  const all = [...(warnings || []), ...(report?.warnings || [])];
+  return `<div class="tui-issues">${all.length ? all.map(item => `<div class="tui-box">${escapeHtml(item)}</div>`).join("") : `<div class="tui-box">No Rust model validation warnings from the current run.</div>`}</div>`;
+}
+
 function renderCanvas() {
   const svg = $("oneLine");
   ensureLayout();
   applyDrawingPreferences();
   renderVoltageLegend();
   renderVoltageColorPanel();
+  if (drawingPrefs.displayMode === "tui") {
+    svg.innerHTML = "";
+    renderTuiPanel();
+    const sub = $("canvasSubtitle");
+    if (sub) sub.textContent = "TUI view - text boxes, inline parameter controls, Rust WASM-backed data";
+    return;
+  }
+  renderTuiPanel();
   const gridSvg = drawingPrefs.grid ? renderCadGrid() : "";
   const branchSvg = network.branches.map(renderBranch).join("");
   const sourceSvg = network.sources.map(renderSource).join("");
