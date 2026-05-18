@@ -460,7 +460,7 @@ let VOLTAGE_OPTIONS = [
 ];
 const CASE_STORAGE_KEY = "faultcalc-workstation-case";
 const CASE_VERSION_KEY = "faultcalc-workstation-case-version";
-const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout-v2";
+const LAYOUT_STORAGE_PREFIX = "faultcalc-workstation-layout-v3";
 const DRAWING_PREFS_KEY = "faultcalc-workstation-drawing-v1";
 let drawingPrefs = loadDrawingPrefs();
 
@@ -1066,12 +1066,12 @@ function autoLayoutPositions() {
   Object.keys(groups).map(Number).sort((a,b) => a-b).forEach(layerIndex => {
     const group = groups[layerIndex];
     group.forEach((id, row) => {
-      positions[id] = { x: snap(560 + (row - (group.length - 1) / 2) * BUS_HORIZONTAL_SPACING), y: snap(270 + layerIndex * BUS_VERTICAL_SPACING) };
+      positions[id] = { x: snap(520 + layerIndex * BUS_HORIZONTAL_SPACING), y: snap(320 + (row - (group.length - 1) / 2) * BUS_VERTICAL_SPACING) };
     });
   });
   return positions;
 }
-function nextBusPosition(fromId, terminal="bottom", ignoreIds=[]) {
+function nextBusPosition(fromId, terminal="right", ignoreIds=[]) {
   if (fromId && layout?.buses?.[fromId]) {
     const p = layout.buses[fromId];
     const direction = terminalDirection(terminal);
@@ -1079,7 +1079,7 @@ function nextBusPosition(fromId, terminal="bottom", ignoreIds=[]) {
     return avoidBusOverlap({ x: snap(Number(p.x) + direction.x * spacing), y: snap(Number(p.y) + direction.y * spacing) }, ignoreIds);
   }
   const n = network?.buses?.length || 0;
-  return avoidBusOverlap({ x: 560 + (n % 3 - 1) * BUS_HORIZONTAL_SPACING, y: 270 + Math.floor(n / 3) * BUS_VERTICAL_SPACING }, ignoreIds);
+  return avoidBusOverlap({ x: 520 + Math.floor(n / 3) * BUS_HORIZONTAL_SPACING, y: 320 + (n % 3 - 1) * BUS_VERTICAL_SPACING }, ignoreIds);
 }
 function terminalDirection(terminal) {
   if (terminal === "left") return { x:-1, y:0 };
@@ -1417,10 +1417,10 @@ function drawingBounds(includeTitleBlock=false) {
     ys.push(p.y - 110, p.y + 130);
   }
   for (const source of network?.sources || []) {
-    const kind = source.kind || "utility";
-    const anchor = busTerminalPoint(source.bus, kind === "load" ? "bottom" : "top");
-    const sy = kind === "load" ? anchor.y + 96 : anchor.y - 96;
-    xs.push(anchor.x - 90, anchor.x + 90);
+    const anchor = sourceAnchorPoint(source);
+    const sx = sourceSymbolPoint(source, anchor).x;
+    const sy = anchor.y;
+    xs.push(Math.min(anchor.x, sx) - 90, Math.max(anchor.x, sx) + 90);
     ys.push(Math.min(anchor.y, sy) - 62, Math.max(anchor.y, sy) + 62);
   }
   for (const branch of network?.branches || []) {
@@ -1540,6 +1540,14 @@ function busTerminalPoint(id, terminal) {
   if (terminal === "left") return { x:p.x - BUS_WIDTH / 2 - 30, y:p.y };
   if (terminal === "right") return { x:p.x + BUS_WIDTH / 2 + 30, y:p.y };
   return { x:p.x, y:p.y + 46 };
+}
+function sourceAnchorPoint(source) {
+  const kind = source?.kind || "utility";
+  return busTerminalPoint(source?.bus, kind === "load" ? "right" : "left");
+}
+function sourceSymbolPoint(source, anchor=sourceAnchorPoint(source)) {
+  const kind = source?.kind || "utility";
+  return { x:anchor.x + (kind === "load" ? 96 : -96), y:anchor.y };
 }
 function branchTerminalAnchor(br, busId, otherId) {
   const a = busPos(busId), b = busPos(otherId);
@@ -1686,21 +1694,22 @@ function stateLabel(v) {
 function isOpen(obj) { const state = String(obj.state || ""); return obj.enabled === false || state.includes("open") || state === "out_of_service"; }
 function renderSource(s) {
   const kind = s.kind || "utility";
-  const anchor = busTerminalPoint(s.bus, kind === "load" ? "bottom" : "top");
-  const sx = anchor.x;
-  const sy = kind === "load" ? anchor.y + 96 : anchor.y - 96;
-  const terminalY = kind === "load" ? sy - 20 : sy + 20;
+  const anchor = sourceAnchorPoint(s);
+  const symbolPoint = sourceSymbolPoint(s, anchor);
+  const sx = symbolPoint.x;
+  const sy = symbolPoint.y;
+  const terminalX = kind === "load" ? sx - 26 : sx + 28;
   const sel = selected.type === "source" && selected.id === s.id;
   const sourceColor = voltageColor(sourceVoltage(s));
   const sourceStyle = sel ? "" : ` style="stroke:${sourceColor}"`;
   const label = kind === "load" ? "LOAD" : kind === "source" ? "SRC" : "UTIL";
   const open = kind !== "load" && isOpen(s);
-  const nameY = kind === "load" ? sy + 31 : sy - 34;
-  const voltageY = kind === "load" ? sy + 45 : sy - 20;
+  const nameY = sy - 28;
+  const voltageY = sy + 39;
   const symbol = kind === "load"
     ? `<rect class="source-symbol ${sel ? "source-selected" : ""}"${sourceStyle} x="${sx-26}" y="${sy-15}" width="52" height="30" rx="0"/>`
     : `<rect class="source-symbol ${sel ? "source-selected" : ""}"${sourceStyle} x="${sx-28}" y="${sy-15}" width="56" height="30" rx="0"/><line x1="${sx-18}" y1="${sy}" x2="${sx+18}" y2="${sy}" stroke="${sourceColor}" stroke-width="var(--symbol-stroke)"/><path d="M${sx-15} ${sy+8} C${sx-8} ${sy-8} ${sx+8} ${sy+8} ${sx+15} ${sy-8}" fill="none" stroke="${sourceColor}" stroke-width="var(--wire-stroke)"/>`;
-  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" style="stroke:${sourceColor}" x1="${anchor.x}" y1="${anchor.y}" x2="${sx}" y2="${terminalY}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(sx, terminalY, "source", s.id, "terminal")}</g>`;
+  return `<g class="sld-element" onclick="selectItem('source','${s.id}')"><line class="branch-line ${open ? "open" : ""}" style="stroke:${sourceColor}" x1="${anchor.x}" y1="${anchor.y}" x2="${terminalX}" y2="${sy}"/>${symbol}<text class="svg-label" x="${sx}" y="${sy+4}" text-anchor="middle">${label}</text><text class="svg-small" x="${sx}" y="${nameY}" text-anchor="middle">${escapeHtml(s.name || s.id)}</text><text class="svg-small" x="${sx}" y="${voltageY}" text-anchor="middle">${escapeHtml(sourceVoltageLabel(s))}</text>${terminalPlus(terminalX, sy, "source", s.id, "terminal")}</g>`;
 }
 function renderBus(b) {
   const p = busPos(b.id);
@@ -1749,6 +1758,7 @@ function showAddMenu(evt, type, id, terminal) {
   menu.classList.remove("hidden");
 }
 function terminalName(terminal) {
+  if (terminal === "terminal") return "terminal";
   if (terminal === "top" || terminal === "input") return "input terminal";
   if (terminal === "left" || terminal === "right") return `${terminal} extension`;
   return "output terminal";
@@ -1757,11 +1767,12 @@ function hideAddMenu() {
   const menu = $("connectionMenu");
   if (menu) menu.classList.add("hidden");
 }
-function menuAddConnection(kind, busId, terminal="bottom") {
+function menuAddConnection(kind, busId, terminal="right") {
   hideAddMenu();
-  if (kind === "transformer") return addTransformerFromBus(busId, terminal);
-  if (kind === "load") return addLoadAtBus(busId, terminal);
-  return addConductorFromBus(busId, terminal);
+  const flowTerminal = terminal === "terminal" ? "right" : terminal;
+  if (kind === "transformer") return addTransformerFromBus(busId, flowTerminal);
+  if (kind === "load") return addLoadAtBus(busId, flowTerminal);
+  return addConductorFromBus(busId, flowTerminal);
 }
 function menuInsertOnBranch(kind, branchId) {
   hideAddMenu();
@@ -1945,7 +1956,7 @@ function addBus() {
   const sourceBus = network.buses.find(b => b.id === anchor);
   network.buses.push({ id, name: `Bus ${network.buses.length+1}`, kv_ll: sourceBus?.kv_ll || DEFAULT_SECONDARY_KV });
   ensureLayout();
-  layout.buses[id] = nextBusPosition(anchor, "bottom", id);
+  layout.buses[id] = nextBusPosition(anchor, "right", id);
   selectItem("bus", id);
   fitCanvas();
   modelChanged(true);
@@ -1972,7 +1983,7 @@ function conductorBranch(id, from, to, name="Conductor") {
 function transformerBranch(id, from, to, ratingKva=2500, impedancePercent=5.75) {
   return branchWithMetadata({ id, kind:"transformer", name:"Transformer", from, to, state:"normally_closed", primary_connection:"delta", secondary_connection:"grounded_wye", vector_shift_deg:-30, rating_kva:ratingKva, impedance_percent:impedancePercent, xr_ratio:7, z1_pu:{r:0,x:0}, z2_pu:{r:0,x:0}, z0_pu:{r:0,x:0}, has_z0:true, enabled:true, rating_a:0, length_m:0, notes:"Default secondary voltage is 600 V." });
 }
-function addConductorFromBus(from, terminal="bottom") {
+function addConductorFromBus(from, terminal="right") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
   const fromBus = network.buses.find(b => b.id === from) || network.buses[0];
@@ -1987,7 +1998,7 @@ function addConductorFromBus(from, terminal="bottom") {
   fitCanvas();
   modelChanged(true);
 }
-function addTransformerFromBus(from, terminal="bottom") {
+function addTransformerFromBus(from, terminal="right") {
   from = from || selectedBusId();
   if (!from) { addBus(); return; }
   ensureLayout();
